@@ -1,0 +1,22 @@
+{
+	"name": "obsidian-jotbird",
+	"version": "0.1.0",
+	"description": "Publish Obsidian notes to JotBird",
+	"main": "main.js",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"test": "vitest run",
+		"test:watch": "vitest"
+	},
+	"keywords": [],
+	"author": "JotBird",
+	"license": "MIT",
+	"devDependencies": {
+		"@types/node": "^22.0.0",
+		"esbuild": "0.25.5",
+		"obsidian": "latest",
+		"typescript": "5.8.3",
+		"vitest": "^3.0.0"
+	}
+}

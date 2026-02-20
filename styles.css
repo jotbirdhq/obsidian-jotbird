@@ -1,0 +1,52 @@
+.jotbird-doc-list-modal {
+	max-width: 600px;
+}
+
+.jotbird-doc-list-empty {
+	color: var(--text-muted);
+	font-style: italic;
+}
+
+.jotbird-doc-list {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin-top: 12px;
+}
+
+.jotbird-doc-item {
+	padding: 8px 12px;
+	border-radius: 6px;
+	background: var(--background-secondary);
+}
+
+.jotbird-doc-title-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 4px;
+}
+
+.jotbird-doc-title {
+	font-weight: 600;
+}
+
+.jotbird-doc-date {
+	color: var(--text-muted);
+	font-size: var(--font-smallest);
+}
+
+.jotbird-doc-url {
+	font-size: var(--font-smallest);
+	color: var(--text-accent);
+}
+
+.jotbird-icons {
+	display: flex;
+}
+
+.jotbird-icons > span {
+	display: flex;
+	margin-left: 6px;
+	cursor: pointer;
+}
