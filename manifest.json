@@ -3,7 +3,7 @@
 	"name": "JotBird",
 	"version": "0.1.0",
 	"minAppVersion": "1.0.0",
-	"description": "Publish notes to JotBird — clean, shareable web pages from your Markdown.",
+	"description": "Publish notes as shareable web pages with one click. No account required.",
 	"author": "JotBird",
 	"authorUrl": "https://jotbird.com",
 	"isDesktopOnly": false
