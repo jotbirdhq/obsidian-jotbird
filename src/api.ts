@@ -77,7 +77,7 @@ export async function listDocuments(apiKey: string): Promise<DocumentListRespons
 
 export async function deleteDocument(apiKey: string, slug: string): Promise<DeleteResponse> {
 	const { status, json } = await apiRequest({
-		url: `${BASE_URL}/cli/documents/delete`,
+		url: `${BASE_URL}/cli/documents/remove`,
 		method: "POST",
 		contentType: "application/json",
 		body: JSON.stringify({ slug }),

@@ -234,7 +234,7 @@ describe("deleteDocument", () => {
 		expect(mockRequestUrl).toHaveBeenCalledOnce();
 		const call = mockRequestUrl.mock.calls[0][0];
 		expect(call).toMatchObject({
-			url: "https://api.jotbird.com/cli/documents/delete",
+			url: "https://api.jotbird.com/cli/documents/remove",
 			method: "POST",
 			contentType: "application/json",
 			throw: false,
@@ -243,6 +243,22 @@ describe("deleteDocument", () => {
 		expect(body).toEqual({ slug: "my-doc" });
 
 		expect(result.ok).toBe(true);
+	});
+
+	it("uses /remove endpoint (hard delete) not /delete (soft unpublish)", async () => {
+		mockRequestUrl.mockResolvedValue({
+			status: 200,
+			json: { ok: true },
+			headers: {},
+			text: "",
+			arrayBuffer: new ArrayBuffer(0),
+		} as never);
+
+		await deleteDocument("jb_test_key", "my-doc");
+
+		const url = mockRequestUrl.mock.calls[0][0].url;
+		expect(url).toBe("https://api.jotbird.com/cli/documents/remove");
+		expect(url).not.toContain("/documents/delete");
 	});
 
 	it("throws on 404 not found", async () => {
