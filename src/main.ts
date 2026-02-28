@@ -47,7 +47,7 @@ export default class JotBirdPlugin extends Plugin {
 
 		// Ribbon icon
 		this.addRibbonIcon("jotbird", "Publish to JotBird", () => {
-			this.publishActiveNote();
+			void this.publishActiveNote();
 		});
 
 		// Command: Publish / Update current note
@@ -57,22 +57,22 @@ export default class JotBirdPlugin extends Plugin {
 			checkCallback: (checking) => {
 				const file = this.getActiveMarkdownFile();
 				if (!file) return false;
-				if (!checking) this.publishActiveNote();
+				if (!checking) void this.publishActiveNote();
 				return true;
 			},
 		});
 
 		// Command: Copy JotBird link
 		this.addCommand({
-			id: "copy-jotbird-link",
-			name: "Copy JotBird link",
+			id: "copy-link",
+			name: "Copy link",
 			checkCallback: (checking) => {
 				const file = this.getActiveMarkdownFile();
 				if (!file) return false;
 				const published = this.publishedNotes[file.path];
 				if (!published) return false;
 				if (!checking) {
-					navigator.clipboard.writeText(published.url);
+					void navigator.clipboard.writeText(published.url);
 					new Notice("JotBird link copied to clipboard");
 				}
 				return true;
@@ -98,7 +98,7 @@ export default class JotBirdPlugin extends Plugin {
 			id: "list-published-documents",
 			name: "List published documents",
 			callback: () => {
-				this.showDocumentList();
+				void this.showDocumentList();
 			},
 		});
 
@@ -119,7 +119,7 @@ export default class JotBirdPlugin extends Plugin {
 						item.setTitle("Copy JotBird link")
 							.setIcon("link")
 							.onClick(() => {
-								navigator.clipboard.writeText(published.url);
+								void navigator.clipboard.writeText(published.url);
 								new Notice("JotBird link copied to clipboard");
 							});
 					});
@@ -153,7 +153,7 @@ export default class JotBirdPlugin extends Plugin {
 				if (published) {
 					this.publishedNotes[file.path] = published;
 					delete this.publishedNotes[oldPath];
-					this.saveSettings();
+					void this.saveSettings();
 				}
 			})
 		);
@@ -164,7 +164,7 @@ export default class JotBirdPlugin extends Plugin {
 				if (!(file instanceof TFile)) return;
 				if (this.publishedNotes[file.path]) {
 					delete this.publishedNotes[file.path];
-					this.saveSettings();
+					void this.saveSettings();
 				}
 			})
 		);
@@ -174,7 +174,7 @@ export default class JotBirdPlugin extends Plugin {
 		this.addSettingTab(this.settingTab);
 
 		// Check Pro status in the background on startup
-		this.checkProStatus();
+		void this.checkProStatus();
 
 		// Register obsidian:// protocol handler for API key and Pro upgrade flows
 		this.registerObsidianProtocolHandler("jotbird", async (params) => {
@@ -183,15 +183,15 @@ export default class JotBirdPlugin extends Plugin {
 			if (p.token && p.token.startsWith("jb_")) {
 				this.settings.apiKey = p.token;
 				await this.saveSettings();
-				new Notice("JotBird: Account connected successfully!");
+				new Notice("Account connected successfully!");
 				this.settingTab?.display();
 				// Check Pro status and claim anonymous documents in the background
-				this.checkProStatus();
-				this.claimAnonymousDocuments();
+				void this.checkProStatus();
+				void this.claimAnonymousDocuments();
 			} else if (p.upgraded === "1") {
 				await this.handleProUpgrade();
 			} else {
-				new Notice("JotBird: Invalid token received. Please try again.");
+				new Notice("Invalid token received. Please try again.");
 			}
 		});
 	}
@@ -257,7 +257,7 @@ export default class JotBirdPlugin extends Plugin {
 
 	private requireApiKey(): boolean {
 		if (!this.settings.apiKey) {
-			new Notice("JotBird: Please set your API key in Settings → JotBird.");
+			new Notice("Please set your API key in settings.");
 			return false;
 		}
 		return true;
@@ -337,14 +337,14 @@ export default class JotBirdPlugin extends Plugin {
 		}
 
 		if (changed) {
-			this.saveSettings();
+			void this.saveSettings();
 		}
 	}
 
 	private async publishActiveNote(): Promise<void> {
 		const file = this.getActiveMarkdownFile();
 		if (!file) {
-			new Notice("JotBird: No active markdown file.");
+			new Notice("No active markdown file.");
 			return;
 		}
 		await this.publishFile(file);
@@ -355,7 +355,7 @@ export default class JotBirdPlugin extends Plugin {
 		const existing = this.publishedNotes[file.path];
 
 		const action = existing ? "Updating" : "Publishing";
-		new Notice(`JotBird: ${action}...`);
+		new Notice(`${action}...`);
 
 		try {
 			const content = await this.app.vault.read(file);
@@ -441,51 +441,53 @@ export default class JotBirdPlugin extends Plugin {
 			if (!hasApiKey) {
 				const copyMsg = this.settings.autoCopyLink ? " Link copied." : "";
 				new Notice(
-					`JotBird: ${verb}!${copyMsg}\nExpires in 30 days — connect a JotBird account for longer links.`,
+					`${verb}!${copyMsg}\nExpires in 30 days — connect a JotBird account for longer links.`,
 					8000
 				);
 			} else if (this.settings.autoCopyLink) {
-				new Notice(`JotBird: ${verb}! Link copied.`, 5000);
+				new Notice(`${verb}! Link copied.`, 5000);
 			} else {
-				new Notice(`JotBird: ${verb}!`, 5000);
+				new Notice(`${verb}!`, 5000);
 			}
 			this.addPropertyIcons();
 		} catch (e) {
-			new Notice(`JotBird: ${e instanceof Error ? e.message : "Unknown error"}`, 10000);
+			new Notice(`${e instanceof Error ? e.message : "Unknown error"}`, 10000);
 		}
 	}
 
-	private async unpublishNote(file: TFile): Promise<void> {
+	private unpublishNote(file: TFile): void {
 		const published = this.publishedNotes[file.path];
 		if (!published) {
-			new Notice("JotBird: This note is not published.");
+			new Notice("This note is not published.");
 			return;
 		}
 
 		new ConfirmModal(
 			this.app,
 			`Unpublish "${file.basename}" from JotBird? This will permanently remove it from ${published.url}.`,
-			async () => {
-				try {
-					if (this.settings.apiKey) {
-						await deleteDocument(this.settings.apiKey, published.slug);
-					} else {
-						await trialDeleteDocument(
-							published.slug,
-							published.editToken ?? "",
-							this.deviceFingerprint
+			() => {
+				void (async () => {
+					try {
+						if (this.settings.apiKey) {
+							await deleteDocument(this.settings.apiKey, published.slug);
+						} else {
+							await trialDeleteDocument(
+								published.slug,
+								published.editToken ?? "",
+								this.deviceFingerprint
+							);
+						}
+						delete this.publishedNotes[file.path];
+						await this.saveSettings();
+						await this.clearFrontmatter(file);
+						new Notice("Note unpublished.");
+					} catch (e) {
+						new Notice(
+							`${e instanceof Error ? e.message : "Unknown error"}`,
+							10000
 						);
 					}
-					delete this.publishedNotes[file.path];
-					await this.saveSettings();
-					await this.clearFrontmatter(file);
-					new Notice("JotBird: Note unpublished.");
-				} catch (e) {
-					new Notice(
-						`JotBird: ${e instanceof Error ? e.message : "Unknown error"}`,
-						10000
-					);
-				}
+				})();
 			}
 		).open();
 	}
@@ -494,12 +496,12 @@ export default class JotBirdPlugin extends Plugin {
 		if (!this.requireApiKey()) return;
 
 		try {
-			new Notice("JotBird: Loading documents...");
+			new Notice("Loading documents...");
 			const result = await listDocuments(this.settings.apiKey);
 			new DocumentListModal(this.app, result.documents).open();
 		} catch (e) {
 			new Notice(
-				`JotBird: ${e instanceof Error ? e.message : "Unknown error"}`,
+				`${e instanceof Error ? e.message : "Unknown error"}`,
 				10000
 			);
 		}
@@ -551,7 +553,7 @@ export default class JotBirdPlugin extends Plugin {
 		if (claimed > 0) {
 			await this.saveSettings();
 			new Notice(
-				`JotBird: ${claimed} existing document${claimed === 1 ? "" : "s"} linked to your account.`
+				`${claimed} existing document${claimed === 1 ? "" : "s"} linked to your account.`
 			);
 		}
 	}
@@ -572,7 +574,7 @@ export default class JotBirdPlugin extends Plugin {
 
 		if (updated > 0) {
 			new Notice(
-				`JotBird: Updated ${updated} note${updated === 1 ? "" : "s"} to Pro (no expiration).`
+				`Updated ${updated} note${updated === 1 ? "" : "s"} to Pro (no expiration).`
 			);
 		}
 	}
@@ -606,10 +608,10 @@ export default class JotBirdPlugin extends Plugin {
 		if (this.isPro) {
 			this.proRefreshDone = true;
 			await this.refreshProExpiration("");
-			new Notice("JotBird: Welcome to Pro! All your links are now permanent.");
+			new Notice("Welcome to Pro! All your links are now permanent.");
 			this.settingTab?.display();
 		} else {
-			new Notice("JotBird: Upgrade not detected yet. Try publishing a note — it will update automatically.");
+			new Notice("Upgrade not detected yet. Try publishing a note — it will update automatically.");
 		}
 	}
 

@@ -41,22 +41,17 @@ function stripComments(md: string): string {
 function stripTags(md: string): string {
 	// Match #tag that isn't a heading (headings: line starts with # followed by space)
 	// Tags: # followed by word chars, not preceded by line-start-only hashes
-	return md.replace(/(?<=\s|^)#(?!#|\s)[\w/-]+/gm, (match, offset, str) => {
+	return md.replace(/(^|\s)#(?!#|\s)([\w/-]+)/gm, (match, prefix, tag, offset, str) => {
 		// Check if this is a heading: line starts with one or more # then space
 		const lineStart = str.lastIndexOf("\n", offset - 1) + 1;
-		const beforeOnLine = str.slice(lineStart, offset);
+		const beforeOnLine = str.slice(lineStart, offset + prefix.length);
 		if (/^#{0,6}$/.test(beforeOnLine.trim()) && beforeOnLine.trim().length > 0) {
 			// This # is part of a heading like "## #tag" - still strip the tag
 			// But "# heading" shouldn't match since heading text doesn't start with #
 			return match;
 		}
-		if (offset === lineStart) {
-			// # at the very start of a line - could be heading or tag
-			// If followed by a space after the tag word, leave it (likely heading)
-			// Actually headings are # + space + text, tags are #word
-			// Since our regex requires no space after #, this is a tag
-		}
-		return "";
+		// Strip the tag but preserve the leading whitespace/start-of-line
+		return prefix;
 	});
 }
 

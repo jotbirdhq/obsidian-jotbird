@@ -16,7 +16,7 @@ export class JotBirdSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		containerEl.createEl("h2", { text: "JotBird" });
+		new Setting(containerEl).setName("JotBird").setHeading();
 
 		const connectUrl = `${SITE_URL}/account/api-key?obsidian=1`;
 
@@ -48,7 +48,7 @@ export class JotBirdSettingTab extends PluginSettingTab {
 					)
 					.addButton((btn) =>
 						btn
-							.setButtonText("Manage Subscription")
+							.setButtonText("Manage subscription")
 							.onClick(async () => {
 								btn.setDisabled(true);
 								btn.setButtonText("Loading...");
@@ -58,10 +58,10 @@ export class JotBirdSettingTab extends PluginSettingTab {
 									);
 									window.open(url);
 								} catch (e) {
-									new Notice(`JotBird: ${e instanceof Error ? e.message : "Failed to open portal"}`);
+									new Notice(`${e instanceof Error ? e.message : "Failed to open portal"}`);
 								} finally {
 									btn.setDisabled(false);
-									btn.setButtonText("Manage Subscription");
+									btn.setButtonText("Manage subscription");
 								}
 							})
 					);
@@ -116,7 +116,7 @@ export class JotBirdSettingTab extends PluginSettingTab {
 					const input = setting.controlEl.querySelector("input");
 					if (input) {
 						input.type = "password";
-						input.style.width = "300px";
+						input.addClass("jotbird-api-key-input");
 					}
 				});
 		}

@@ -1,7 +1,7 @@
 {
 	"id": "jotbird",
 	"name": "JotBird",
-	"version": "0.4.0",
+	"version": "0.4.1",
 	"minAppVersion": "1.0.0",
 	"description": "Publish notes as shareable web pages with one click. No account required.",
 	"author": "JotBird",
