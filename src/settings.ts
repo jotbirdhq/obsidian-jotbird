@@ -16,8 +16,6 @@ export class JotBirdSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		new Setting(containerEl).setName("JotBird").setHeading();
-
 		const connectUrl = `${SITE_URL}/account/api-key?obsidian=1`;
 
 		if (this.plugin.settings.apiKey) {

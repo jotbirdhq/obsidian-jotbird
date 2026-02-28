@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-jotbird",
-	"version": "0.4.1",
+	"version": "0.4.2",
 	"description": "Publish Obsidian notes to JotBird",
 	"main": "main.js",
 	"scripts": {
