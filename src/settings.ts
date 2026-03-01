@@ -23,7 +23,7 @@ export class JotBirdSettingTab extends PluginSettingTab {
 				? "Connected (Pro)."
 				: "Connected. Your published links get extended expiration.";
 			new Setting(containerEl)
-				.setName("JotBird account")
+				.setName("Account")
 				.setDesc(accountDesc)
 				.addButton((btn) =>
 					btn
@@ -40,9 +40,9 @@ export class JotBirdSettingTab extends PluginSettingTab {
 
 			if (this.plugin.isPro) {
 				new Setting(containerEl)
-					.setName("JotBird Pro")
+					.setName("Subscription")
 					.setDesc(
-						"You're a Pro subscriber! All your published links are permanent and will never expire."
+						"Your subscription is active. All published links are permanent and will never expire."
 					)
 					.addButton((btn) =>
 						btn
@@ -66,13 +66,13 @@ export class JotBirdSettingTab extends PluginSettingTab {
 			} else {
 				const upgradeUrl = `${SITE_URL}/pro?obsidian=1`;
 				new Setting(containerEl)
-					.setName("Upgrade to Pro")
+					.setName("Upgrade")
 					.setDesc(
 						"Get permanent links that never expire, plus priority support."
 					)
 					.addButton((btn) =>
 						btn
-							.setButtonText("Upgrade to Pro")
+							.setButtonText("Upgrade")
 							.setCta()
 							.onClick(() => {
 								window.open(upgradeUrl);
@@ -81,13 +81,13 @@ export class JotBirdSettingTab extends PluginSettingTab {
 			}
 		} else {
 			new Setting(containerEl)
-				.setName("JotBird account")
+				.setName("Account")
 				.setDesc(
-					"Connect your JotBird account for 90-day links (free) or permanent links (Pro)."
+					"Connect an account for 90-day links, or upgrade for permanent links."
 				)
 				.addButton((btn) =>
 					btn
-						.setButtonText("Connect to JotBird")
+						.setButtonText("Connect account")
 						.setCta()
 						.onClick(() => {
 							window.open(connectUrl);
@@ -103,7 +103,6 @@ export class JotBirdSettingTab extends PluginSettingTab {
 				)
 				.addText((text) =>
 					text
-						.setPlaceholder("jb_...")
 						.setValue(this.plugin.settings.apiKey)
 						.onChange(async (value) => {
 							this.plugin.settings.apiKey = value.trim();
@@ -146,7 +145,7 @@ export class JotBirdSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Store frontmatter")
 			.setDesc(
-				"After publishing, save the JotBird URL and expiration in your note's frontmatter properties. Disable if you prefer not to modify your notes."
+				"After publishing, save the published URL and expiration in your note's frontmatter properties. Disable if you prefer not to modify your notes."
 			)
 			.addToggle((toggle) =>
 				toggle

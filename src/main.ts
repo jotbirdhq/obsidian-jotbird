@@ -46,7 +46,7 @@ export default class JotBirdPlugin extends Plugin {
 		);
 
 		// Ribbon icon
-		this.addRibbonIcon("jotbird", "Publish to JotBird", () => {
+		this.addRibbonIcon("jotbird", "Publish note", () => {
 			void this.publishActiveNote();
 		});
 
@@ -73,7 +73,7 @@ export default class JotBirdPlugin extends Plugin {
 				if (!published) return false;
 				if (!checking) {
 					void navigator.clipboard.writeText(published.url);
-					new Notice("JotBird link copied to clipboard");
+					new Notice("Link copied to clipboard");
 				}
 				return true;
 			},
@@ -111,26 +111,26 @@ export default class JotBirdPlugin extends Plugin {
 
 				if (published) {
 					menu.addItem((item) => {
-						item.setTitle("Update on JotBird")
+						item.setTitle("Republish")
 							.setIcon("jotbird")
 							.onClick(() => this.publishFile(file));
 					});
 					menu.addItem((item) => {
-						item.setTitle("Copy JotBird link")
+						item.setTitle("Copy link")
 							.setIcon("link")
 							.onClick(() => {
 								void navigator.clipboard.writeText(published.url);
-								new Notice("JotBird link copied to clipboard");
+								new Notice("Link copied to clipboard");
 							});
 					});
 					menu.addItem((item) => {
-						item.setTitle("Unpublish from JotBird")
+						item.setTitle("Unpublish")
 							.setIcon("trash")
 							.onClick(() => this.unpublishNote(file));
 					});
 				} else {
 					menu.addItem((item) => {
-						item.setTitle("Publish to JotBird")
+						item.setTitle("Publish")
 							.setIcon("jotbird")
 							.onClick(() => this.publishFile(file));
 					});
@@ -232,7 +232,7 @@ export default class JotBirdPlugin extends Plugin {
 					iconsEl.classList.add("jotbird-icons");
 
 					const updateIcon = iconsEl.createEl("span");
-					updateIcon.title = "Update on JotBird";
+					updateIcon.title = "Republish";
 					setIcon(updateIcon, "upload-cloud");
 					updateIcon.onclick = () => this.publishFile(file);
 
@@ -241,7 +241,7 @@ export default class JotBirdPlugin extends Plugin {
 					setIcon(copyIcon, "copy");
 					copyIcon.onclick = async () => {
 						await navigator.clipboard.writeText(published.url);
-						new Notice("JotBird link copied to clipboard");
+						new Notice("Link copied to clipboard");
 					};
 
 					const deleteIcon = iconsEl.createEl("span");
@@ -344,7 +344,7 @@ export default class JotBirdPlugin extends Plugin {
 	private async publishActiveNote(): Promise<void> {
 		const file = this.getActiveMarkdownFile();
 		if (!file) {
-			new Notice("No active markdown file.");
+			new Notice("No active Markdown file.");
 			return;
 		}
 		await this.publishFile(file);
@@ -608,7 +608,7 @@ export default class JotBirdPlugin extends Plugin {
 		if (this.isPro) {
 			this.proRefreshDone = true;
 			await this.refreshProExpiration("");
-			new Notice("Welcome to Pro! All your links are now permanent.");
+			new Notice("Upgrade complete! All your links are now permanent.");
 			this.settingTab?.display();
 		} else {
 			new Notice("Upgrade not detected yet. Try publishing a note — it will update automatically.");
