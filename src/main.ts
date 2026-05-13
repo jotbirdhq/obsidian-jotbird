@@ -25,6 +25,7 @@ export default class JotBirdPlugin extends Plugin {
 	private settingTab: JotBirdSettingTab | null = null;
 	proRefreshDone = false;
 	private proCheckInFlight: Promise<void> | null = null;
+	private propertyIconTimer: number | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -206,10 +207,14 @@ export default class JotBirdPlugin extends Plugin {
 	}
 
 	private addPropertyIcons(): void {
+		if (this.propertyIconTimer !== null) {
+			window.clearInterval(this.propertyIconTimer);
+		}
 		let count = 0;
-		const timer = setInterval(() => {
+		this.propertyIconTimer = window.setInterval(() => {
 			if (++count > 8) {
-				clearInterval(timer);
+				window.clearInterval(this.propertyIconTimer!);
+				this.propertyIconTimer = null;
 				return;
 			}
 			const file = this.app.workspace.getActiveFile?.();
@@ -217,7 +222,7 @@ export default class JotBirdPlugin extends Plugin {
 			const published = this.publishedNotes[file.path];
 			if (!published) return;
 
-			document
+			activeDocument
 				.querySelectorAll(
 					'div.metadata-property[data-property-key="jotbird_link"]'
 				)
@@ -228,7 +233,7 @@ export default class JotBirdPlugin extends Plugin {
 					if (!valueEl || valueEl.querySelector("div.jotbird-icons"))
 						return;
 
-					const iconsEl = document.createElement("div");
+					const iconsEl = activeDocument.createElement("div");
 					iconsEl.classList.add("jotbird-icons");
 
 					const updateIcon = iconsEl.createEl("span");
@@ -251,7 +256,8 @@ export default class JotBirdPlugin extends Plugin {
 
 					valueEl.prepend(iconsEl);
 				});
-			clearInterval(timer);
+			window.clearInterval(this.propertyIconTimer!);
+			this.propertyIconTimer = null;
 		}, 50);
 	}
 
@@ -271,7 +277,7 @@ export default class JotBirdPlugin extends Plugin {
 	): Promise<void> {
 		if (!this.settings.storeFrontmatter) return;
 		try {
-			await this.app.fileManager.processFrontMatter(file, (fm) => {
+			await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
 				// Delete and re-add to ensure jotbird_link appears before jotbird_expires
 				delete fm["jotbird_link"];
 				delete fm["jotbird_expires"];
@@ -290,7 +296,7 @@ export default class JotBirdPlugin extends Plugin {
 	private async clearFrontmatter(file: TFile): Promise<void> {
 		if (!this.settings.storeFrontmatter) return;
 		try {
-			await this.app.fileManager.processFrontMatter(file, (fm) => {
+			await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
 				delete fm["jotbird_link"];
 				delete fm["jotbird_expires"];
 				// Clean up old property names from previous versions
@@ -313,10 +319,10 @@ export default class JotBirdPlugin extends Plugin {
 			if (this.publishedNotes[file.path]) continue;
 
 			const cache = this.app.metadataCache.getFileCache(file);
-			const fm = cache?.frontmatter;
+			const fm: Record<string, unknown> | undefined = cache?.frontmatter;
 			// Support current property (jotbird_link) and legacy (jotbird_url)
 			const link = fm?.["jotbird_link"] ?? fm?.["jotbird_url"];
-			if (!link) continue;
+			if (!link || typeof link !== "string") continue;
 
 			// Extract slug from the last path segment of the URL
 			let slug: string;
@@ -328,10 +334,11 @@ export default class JotBirdPlugin extends Plugin {
 			}
 			if (!slug) continue;
 
+			const publishedAt = fm?.["jotbird_published"];
 			this.publishedNotes[file.path] = {
 				slug,
 				url: link,
-				publishedAt: fm?.["jotbird_published"] ?? "",
+				publishedAt: typeof publishedAt === "string" ? publishedAt : "",
 			};
 			changed = true;
 		}
@@ -616,7 +623,7 @@ export default class JotBirdPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		const data: Partial<PluginData> = (await this.loadData()) ?? {};
+		const data = ((await this.loadData()) as Partial<PluginData> | null) ?? {};
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings);
 		this.publishedNotes = data.publishedNotes ?? {};
 		this.deviceFingerprint = data.deviceFingerprint || crypto.randomUUID();

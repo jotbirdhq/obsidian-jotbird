@@ -137,7 +137,7 @@ describe("onload", () => {
 		});
 		await plugin.onload();
 
-		expect(plugin.addRibbonIcon).toHaveBeenCalledWith("jotbird", "Publish to JotBird", expect.any(Function));
+		expect(plugin.addRibbonIcon).toHaveBeenCalledWith("jotbird", "Publish note", expect.any(Function));
 		expect(plugin.addCommand).toHaveBeenCalledTimes(4);
 		expect(plugin.addSettingTab).toHaveBeenCalledOnce();
 		// 4 registerEvent calls: file-menu, active-leaf-change, vault.rename, vault.delete
@@ -148,7 +148,7 @@ describe("onload", () => {
 			(call: unknown[]) => (call[0] as { id: string }).id
 		);
 		expect(commandIds).toContain("publish-current-note");
-		expect(commandIds).toContain("copy-jotbird-link");
+		expect(commandIds).toContain("copy-link");
 		expect(commandIds).toContain("unpublish-current-note");
 		expect(commandIds).toContain("list-published-documents");
 	});
@@ -691,7 +691,7 @@ describe("command availability", () => {
 		await plugin.onload();
 
 		const copyCmd = (plugin.addCommand as ReturnType<typeof vi.fn>).mock.calls.find(
-			(call: unknown[]) => (call[0] as { id: string }).id === "copy-jotbird-link"
+			(call: unknown[]) => (call[0] as { id: string }).id === "copy-link"
 		);
 		const checkCallback = (copyCmd![0] as { checkCallback: (checking: boolean) => boolean }).checkCallback;
 

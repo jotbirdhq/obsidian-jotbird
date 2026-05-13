@@ -39,7 +39,7 @@ describe("publishNote", () => {
 		});
 		expect(call.headers).toMatchObject({
 			Authorization: "Bearer jb_test_key",
-			"User-Agent": "jotbird-obsidian/0.1.0",
+			"User-Agent": "jotbird-obsidian/0.4.3",
 		});
 		const body = JSON.parse(call.body as string);
 		expect(body).toEqual({ markdown: "# Hello", title: "Hello World" });
@@ -307,7 +307,7 @@ describe("trialPublish", () => {
 			throw: false,
 		});
 		expect(call.headers).toMatchObject({
-			"User-Agent": "jotbird-obsidian/0.1.0",
+			"User-Agent": "jotbird-obsidian/0.4.3",
 			"X-Device-Fingerprint": "fp_device123",
 		});
 		expect(call.headers?.Authorization).toBeUndefined();
@@ -382,7 +382,7 @@ describe("trialDeleteDocument", () => {
 			throw: false,
 		});
 		expect(call.headers).toMatchObject({
-			"User-Agent": "jotbird-obsidian/0.1.0",
+			"User-Agent": "jotbird-obsidian/0.4.3",
 			"X-Device-Fingerprint": "fp_device123",
 		});
 		expect(call.headers?.Authorization).toBeUndefined();
@@ -428,7 +428,7 @@ describe("uploadImage", () => {
 		expect(call.method).toBe("POST");
 		expect(call.headers?.Authorization).toBe("Bearer jb_test_key");
 		expect(call.headers?.["Content-Type"]).toMatch(/^multipart\/form-data; boundary=/);
-		expect(call.headers?.["User-Agent"]).toBe("jotbird-obsidian/0.1.0");
+		expect(call.headers?.["User-Agent"]).toBe("jotbird-obsidian/0.4.3");
 
 		// Verify the body is an ArrayBuffer containing the multipart data
 		expect(call.body).toBeInstanceOf(ArrayBuffer);
@@ -480,6 +480,6 @@ describe("uploadImage", () => {
 
 		const call = mockRequestUrl.mock.calls[0][0];
 		expect(call.headers?.Authorization).toBeUndefined();
-		expect(call.headers?.["User-Agent"]).toBe("jotbird-obsidian/0.1.0");
+		expect(call.headers?.["User-Agent"]).toBe("jotbird-obsidian/0.4.3");
 	});
 });

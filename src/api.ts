@@ -9,7 +9,7 @@ import {
 
 const BASE_URL = "https://api.jotbird.com";
 const IMAGE_UPLOAD_URL = `${BASE_URL}/preview/upload-image`;
-const USER_AGENT = "jotbird-obsidian/0.1.0";
+const USER_AGENT = "jotbird-obsidian/0.4.3";
 
 function headers(apiKey: string): Record<string, string> {
 	const h: Record<string, string> = { "User-Agent": USER_AGENT };

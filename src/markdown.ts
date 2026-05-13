@@ -41,7 +41,7 @@ function stripComments(md: string): string {
 function stripTags(md: string): string {
 	// Match #tag that isn't a heading (headings: line starts with # followed by space)
 	// Tags: # followed by word chars, not preceded by line-start-only hashes
-	return md.replace(/(^|\s)#(?!#|\s)([\w/-]+)/gm, (match, prefix, tag, offset, str) => {
+	return md.replace(/(^|\s)#(?!#|\s)([\w/-]+)/gm, (match: string, prefix: string, _tag: string, offset: number, str: string) => {
 		// Check if this is a heading: line starts with one or more # then space
 		const lineStart = str.lastIndexOf("\n", offset - 1) + 1;
 		const beforeOnLine = str.slice(lineStart, offset + prefix.length);

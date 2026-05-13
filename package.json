@@ -7,14 +7,18 @@
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
 		"test": "vitest run",
-		"test:watch": "vitest"
+		"test:watch": "vitest",
+		"lint": "eslint src/"
 	},
 	"keywords": [],
 	"author": "JotBird",
 	"license": "MIT",
 	"devDependencies": {
 		"@types/node": "^22.0.0",
+		"@typescript-eslint/parser": "^8.59.3",
 		"esbuild": "0.25.5",
+		"eslint": "^9.39.4",
+		"eslint-plugin-obsidianmd": "^0.3.0",
 		"obsidian": "latest",
 		"typescript": "5.8.3",
 		"vitest": "^3.0.0"
