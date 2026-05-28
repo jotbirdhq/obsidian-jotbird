@@ -278,6 +278,54 @@ describe("publishFile", () => {
 		expect(stored.editToken).toBe("tok_edit123");
 	});
 
+	it("ignores a re-entrant publish of the same file while one is in flight", async () => {
+		const plugin = createPlugin({
+			settings: { apiKey: "jb_key", stripTags: true, autoCopyLink: false },
+			publishedNotes: {},
+		});
+		await plugin.loadSettings();
+
+		const file = makeFile("notes/dupe.md", "dupe");
+		plugin.app.vault.read = vi.fn().mockResolvedValue("# Dupe\n\nContent");
+
+		// Hold the publish open so the second call lands while the first is in flight.
+		let resolvePublish!: (v: Awaited<ReturnType<typeof publishNote>>) => void;
+		mockPublishNote.mockReturnValue(
+			new Promise((resolve) => {
+				resolvePublish = resolve;
+			})
+		);
+
+		const first = plugin.publishFile(file);
+		const second = plugin.publishFile(file); // re-entrant: should be a no-op
+
+		resolvePublish({
+			slug: "gentle-stellar-hawk",
+			url: "https://share.jotbird.com/gentle-stellar-hawk",
+			title: "Dupe",
+			expiresAt: "2026-08-26T12:00:00.000Z",
+			ttlDays: 90,
+			created: true,
+		});
+		await Promise.all([first, second]);
+
+		// Only one network publish should have fired — no duplicate page.
+		expect(mockPublishNote).toHaveBeenCalledTimes(1);
+		expect(plugin.publishedNotes["notes/dupe.md"].slug).toBe("gentle-stellar-hawk");
+
+		// Lock is released, so a later publish goes through normally.
+		mockPublishNote.mockResolvedValue({
+			slug: "gentle-stellar-hawk",
+			url: "https://share.jotbird.com/gentle-stellar-hawk",
+			title: "Dupe",
+			expiresAt: "2026-08-26T12:00:00.000Z",
+			ttlDays: 90,
+			created: false,
+		});
+		await plugin.publishFile(file);
+		expect(mockPublishNote).toHaveBeenCalledTimes(2);
+	});
+
 	it("prepends filename as H1 when content has no heading", async () => {
 		const plugin = createPlugin({
 			settings: { apiKey: "jb_key", stripTags: true, autoCopyLink: false },

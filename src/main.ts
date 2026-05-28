@@ -26,6 +26,8 @@ export default class JotBirdPlugin extends Plugin {
 	proRefreshDone = false;
 	private proCheckInFlight: Promise<void> | null = null;
 	private propertyIconTimer: number | null = null;
+	// File paths with a publish currently in flight, to block re-entrant calls.
+	private publishing = new Set<string>();
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -358,6 +360,17 @@ export default class JotBirdPlugin extends Plugin {
 	}
 
 	async publishFile(file: TFile): Promise<void> {
+		// Guard against double-submit. For a brand-new note, `existing` stays
+		// undefined until the first publish returns and populates
+		// publishedNotes, so a second call that lands during the round-trip
+		// would publish the same note again with a fresh random slug, creating
+		// a duplicate page. Ignore re-entrant calls for the same file.
+		if (this.publishing.has(file.path)) {
+			new Notice("Already publishing this note…");
+			return;
+		}
+		this.publishing.add(file.path);
+
 		const hasApiKey = !!this.settings.apiKey;
 		const existing = this.publishedNotes[file.path];
 
@@ -459,6 +472,8 @@ export default class JotBirdPlugin extends Plugin {
 			this.addPropertyIcons();
 		} catch (e) {
 			new Notice(`${e instanceof Error ? e.message : "Unknown error"}`, 10000);
+		} finally {
+			this.publishing.delete(file.path);
 		}
 	}
 
