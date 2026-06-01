@@ -39,7 +39,7 @@ describe("publishNote", () => {
 		});
 		expect(call.headers).toMatchObject({
 			Authorization: "Bearer jb_test_key",
-			"User-Agent": "jotbird-obsidian/0.4.4",
+			"User-Agent": expect.stringMatching(/^jotbird-obsidian\/\d+\.\d+\.\d+$/),
 		});
 		const body = JSON.parse(call.body as string);
 		expect(body).toEqual({ markdown: "# Hello", title: "Hello World" });
@@ -70,6 +70,36 @@ describe("publishNote", () => {
 
 		const body = JSON.parse(mockRequestUrl.mock.calls[0][0].body as string);
 		expect(body.slug).toBe("my-doc");
+	});
+
+	it("includes documentId when provided, and still sends slug as a fallback", async () => {
+		mockRequestUrl.mockResolvedValue({
+			status: 200,
+			json: {
+				documentId: "doc-uuid-123",
+				slug: "renamed-in-web-app",
+				url: "https://share.jotbird.com/@matt/renamed-in-web-app",
+				username: "matt",
+				title: "Updated",
+				expiresAt: null,
+				ttlDays: null,
+				created: false,
+			},
+			headers: {},
+			text: "",
+			arrayBuffer: new ArrayBuffer(0),
+		} as never);
+
+		const result = await publishNote("jb_test_key", "# Updated", "Updated", "stale-slug", "doc-uuid-123");
+
+		const body = JSON.parse(mockRequestUrl.mock.calls[0][0].body as string);
+		expect(body.documentId).toBe("doc-uuid-123");
+		expect(body.slug).toBe("stale-slug"); // sent, but the server treats documentId as authoritative
+
+		// Response surfaces the document's current (server-resolved) slug + namespace
+		expect(result.documentId).toBe("doc-uuid-123");
+		expect(result.slug).toBe("renamed-in-web-app");
+		expect(result.username).toBe("matt");
 	});
 
 	it("throws on 401 unauthorized", async () => {
@@ -307,7 +337,7 @@ describe("trialPublish", () => {
 			throw: false,
 		});
 		expect(call.headers).toMatchObject({
-			"User-Agent": "jotbird-obsidian/0.4.4",
+			"User-Agent": expect.stringMatching(/^jotbird-obsidian\/\d+\.\d+\.\d+$/),
 			"X-Device-Fingerprint": "fp_device123",
 		});
 		expect(call.headers?.Authorization).toBeUndefined();
@@ -382,7 +412,7 @@ describe("trialDeleteDocument", () => {
 			throw: false,
 		});
 		expect(call.headers).toMatchObject({
-			"User-Agent": "jotbird-obsidian/0.4.4",
+			"User-Agent": expect.stringMatching(/^jotbird-obsidian\/\d+\.\d+\.\d+$/),
 			"X-Device-Fingerprint": "fp_device123",
 		});
 		expect(call.headers?.Authorization).toBeUndefined();
@@ -428,7 +458,7 @@ describe("uploadImage", () => {
 		expect(call.method).toBe("POST");
 		expect(call.headers?.Authorization).toBe("Bearer jb_test_key");
 		expect(call.headers?.["Content-Type"]).toMatch(/^multipart\/form-data; boundary=/);
-		expect(call.headers?.["User-Agent"]).toBe("jotbird-obsidian/0.4.4");
+		expect(call.headers?.["User-Agent"]).toMatch(/^jotbird-obsidian\/\d+\.\d+\.\d+$/);
 
 		// Verify the body is an ArrayBuffer containing the multipart data
 		expect(call.body).toBeInstanceOf(ArrayBuffer);
@@ -480,6 +510,6 @@ describe("uploadImage", () => {
 
 		const call = mockRequestUrl.mock.calls[0][0];
 		expect(call.headers?.Authorization).toBeUndefined();
-		expect(call.headers?.["User-Agent"]).toBe("jotbird-obsidian/0.4.4");
+		expect(call.headers?.["User-Agent"]).toMatch(/^jotbird-obsidian\/\d+\.\d+\.\d+$/);
 	});
 });

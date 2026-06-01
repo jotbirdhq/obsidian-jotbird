@@ -14,6 +14,12 @@ export const DEFAULT_SETTINGS: JotBirdSettings = {
 
 /** Mapping of file path -> published document info */
 export interface PublishedNote {
+	/**
+	 * Stable document UUID. Identifies the document on update regardless of
+	 * later slug/namespace changes made in the web app. Absent for notes
+	 * published before this field existed; backfilled on their next publish.
+	 */
+	documentId?: string;
 	slug: string;
 	url: string;
 	editToken?: string;
@@ -28,7 +34,9 @@ export interface PluginData {
 }
 
 export interface PublishResponse {
+	documentId?: string;
 	slug: string;
+	username?: string;
 	url: string;
 	title: string;
 	expiresAt: string | null;

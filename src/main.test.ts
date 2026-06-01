@@ -196,7 +196,8 @@ describe("publishFile", () => {
 			"jb_key",
 			"# Hello World\n\nSome content",
 			"Hello World",
-			undefined // no existing slug
+			undefined, // no existing slug
+			undefined // no existing documentId
 		);
 
 		const stored = plugin.publishedNotes["notes/hello.md"];
@@ -236,8 +237,58 @@ describe("publishFile", () => {
 			"jb_key",
 			"# Updated content",
 			"Updated content",
-			"my-existing-doc" // existing slug passed
+			"my-existing-doc", // existing slug passed
+			undefined // no existing documentId
 		);
+	});
+
+	it("forwards the stored documentId and persists the server-resolved slug after a web-app rename", async () => {
+		const existingNote: PublishedNote = {
+			documentId: "doc-uuid-abc",
+			slug: "old-slug",
+			url: "https://share.jotbird.com/old-slug",
+			publishedAt: "2026-01-01T00:00:00.000Z",
+		};
+
+		const plugin = createPlugin({
+			settings: { apiKey: "jb_key", stripTags: true, autoCopyLink: false },
+			publishedNotes: { "notes/doc.md": existingNote },
+			proRefreshDone: true, // skip the Pro-expiry refresh branch (ttlDays:null would trigger it)
+		});
+		await plugin.loadSettings();
+
+		const file = makeFile("notes/doc.md", "doc");
+		plugin.app.vault.read = vi.fn().mockResolvedValue("# Updated content");
+
+		// The slug was changed in the web app; the server resolves the documentId to its
+		// CURRENT namespaced slug and returns that.
+		mockPublishNote.mockResolvedValue({
+			documentId: "doc-uuid-abc",
+			slug: "new-namespaced-slug",
+			username: "matt",
+			url: "https://share.jotbird.com/@matt/new-namespaced-slug",
+			title: "Updated content",
+			expiresAt: null,
+			ttlDays: null,
+			created: false,
+		});
+
+		await plugin.publishFile(file);
+
+		// documentId is forwarded as the authoritative 5th arg
+		expect(mockPublishNote).toHaveBeenCalledWith(
+			"jb_key",
+			"# Updated content",
+			"Updated content",
+			"old-slug",
+			"doc-uuid-abc"
+		);
+
+		// Stored mapping keeps the documentId and adopts the server's current slug/url
+		const stored = plugin.publishedNotes["notes/doc.md"];
+		expect(stored.documentId).toBe("doc-uuid-abc");
+		expect(stored.slug).toBe("new-namespaced-slug");
+		expect(stored.url).toBe("https://share.jotbird.com/@matt/new-namespaced-slug");
 	});
 
 	it("uses trial publish when no API key is set", async () => {
@@ -351,6 +402,7 @@ describe("publishFile", () => {
 			"jb_key",
 			"# My Vacation\n\nJust some content without a heading",
 			"My Vacation",
+			undefined,
 			undefined
 		);
 	});
@@ -380,6 +432,7 @@ describe("publishFile", () => {
 			"jb_key",
 			"# My Document Title\n\nSome content",
 			"My Document Title",
+			undefined,
 			undefined
 		);
 	});
@@ -409,6 +462,7 @@ describe("publishFile", () => {
 			"jb_key",
 			"# My Custom Title\n\nContent here",
 			"My Custom Title",
+			undefined,
 			undefined
 		);
 	});
@@ -471,7 +525,7 @@ describe("publishFile", () => {
 		// First call: update attempt with old slug
 		expect(mockPublishNote).toHaveBeenCalledTimes(2);
 		expect(mockPublishNote.mock.calls[0]).toEqual([
-			"jb_key", "# Expired Note\n\nContent", "Expired Note", "old-expired-slug",
+			"jb_key", "# Expired Note\n\nContent", "Expired Note", "old-expired-slug", undefined,
 		]);
 		// Second call: fresh publish without slug
 		expect(mockPublishNote.mock.calls[1]).toEqual([

@@ -9,7 +9,7 @@ import {
 
 const BASE_URL = "https://api.jotbird.com";
 const IMAGE_UPLOAD_URL = `${BASE_URL}/preview/upload-image`;
-const USER_AGENT = "jotbird-obsidian/0.4.5";
+const USER_AGENT = "jotbird-obsidian/0.4.6";
 
 function headers(apiKey: string): Record<string, string> {
 	const h: Record<string, string> = { "User-Agent": USER_AGENT };
@@ -45,9 +45,16 @@ export async function publishNote(
 	apiKey: string,
 	markdown: string,
 	title: string,
-	slug?: string
+	slug?: string,
+	documentId?: string
 ): Promise<PublishResponse> {
 	const body: Record<string, string> = { markdown, title };
+	// documentId is the authoritative identifier for updates; the server resolves
+	// the document's current slug/namespace from it. slug is still sent for the
+	// first publish and as a fallback for notes published before documentId existed.
+	if (documentId) {
+		body.documentId = documentId;
+	}
 	if (slug) {
 		body.slug = slug;
 	}

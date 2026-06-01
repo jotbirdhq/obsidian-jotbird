@@ -400,7 +400,8 @@ export default class JotBirdPlugin extends Plugin {
 						this.settings.apiKey,
 						markdown,
 						title,
-						existing?.slug
+						existing?.slug,
+						existing?.documentId
 					);
 				} else {
 					result = await trialPublish(
@@ -434,6 +435,7 @@ export default class JotBirdPlugin extends Plugin {
 			}
 
 			this.publishedNotes[file.path] = {
+				documentId: result.documentId ?? existing?.documentId,
 				slug: result.slug,
 				url: result.url,
 				editToken: result.editToken,
