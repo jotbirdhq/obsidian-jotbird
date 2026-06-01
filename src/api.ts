@@ -9,7 +9,7 @@ import {
 
 const BASE_URL = "https://api.jotbird.com";
 const IMAGE_UPLOAD_URL = `${BASE_URL}/preview/upload-image`;
-const USER_AGENT = "jotbird-obsidian/0.4.6";
+const USER_AGENT = "jotbird-obsidian/0.4.7";
 
 function headers(apiKey: string): Record<string, string> {
 	const h: Record<string, string> = { "User-Agent": USER_AGENT };
@@ -82,12 +82,18 @@ export async function listDocuments(apiKey: string): Promise<DocumentListRespons
 	return json as DocumentListResponse;
 }
 
-export async function deleteDocument(apiKey: string, slug: string): Promise<DeleteResponse> {
+export async function deleteDocument(apiKey: string, slug: string, documentId?: string): Promise<DeleteResponse> {
+	// documentId is authoritative and works for namespaced docs too; the slug-only path on the
+	// server can't find namespaced pages and would 404. slug is still sent as a fallback.
+	const body: Record<string, string> = { slug };
+	if (documentId) {
+		body.documentId = documentId;
+	}
 	const { status, json } = await apiRequest({
 		url: `${BASE_URL}/cli/documents/remove`,
 		method: "POST",
 		contentType: "application/json",
-		body: JSON.stringify({ slug }),
+		body: JSON.stringify(body),
 		headers: headers(apiKey),
 	});
 
@@ -159,7 +165,11 @@ export async function trialDeleteDocument(
 }
 
 export async function getPortalUrl(apiKey: string): Promise<string> {
-	const baseUrl = "https://jotbird.com";
+	// Must hit www directly: the apex domain (jotbird.com) 301-redirects to www, and a 301
+	// downgrades this POST to a GET (only 307/308 preserve the method), which the route
+	// rejects with 405. Browser-opened GET links elsewhere tolerate the redirect; this
+	// programmatic POST does not.
+	const baseUrl = "https://www.jotbird.com";
 	const { status, json } = await apiRequest({
 		url: `${baseUrl}/api/stripe/portal-key`,
 		method: "POST",

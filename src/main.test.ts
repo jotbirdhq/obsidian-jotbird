@@ -884,6 +884,7 @@ describe("unpublish", () => {
 			settings: { apiKey: "jb_key", stripTags: true, autoCopyLink: true },
 			publishedNotes: {
 				"notes/remove.md": {
+					documentId: "remove-doc-id",
 					slug: "remove-doc",
 					url: "https://share.jotbird.com/remove-doc",
 					publishedAt: "2026-01-01T00:00:00.000Z",
@@ -907,7 +908,7 @@ describe("unpublish", () => {
 		checkCallback(false);
 
 		await vi.waitFor(() => {
-			expect(mockDeleteDocument).toHaveBeenCalledWith("jb_key", "remove-doc");
+			expect(mockDeleteDocument).toHaveBeenCalledWith("jb_key", "remove-doc", "remove-doc-id");
 		});
 
 		await vi.waitFor(() => {

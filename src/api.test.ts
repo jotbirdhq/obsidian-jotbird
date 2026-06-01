@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { requestUrl } from "obsidian";
-import { publishNote, listDocuments, deleteDocument, uploadImage, trialPublish, trialDeleteDocument } from "./api";
+import { publishNote, listDocuments, deleteDocument, uploadImage, trialPublish, trialDeleteDocument, getPortalUrl } from "./api";
 
 const mockRequestUrl = vi.mocked(requestUrl);
 
@@ -275,6 +275,22 @@ describe("deleteDocument", () => {
 		expect(result.ok).toBe(true);
 	});
 
+	it("includes documentId when provided (deletes namespaced docs the slug-only path can't find)", async () => {
+		mockRequestUrl.mockResolvedValue({
+			status: 200,
+			json: { ok: true },
+			headers: {},
+			text: "",
+			arrayBuffer: new ArrayBuffer(0),
+		} as never);
+
+		await deleteDocument("jb_test_key", "old-slug", "doc-uuid-xyz");
+
+		const body = JSON.parse(mockRequestUrl.mock.calls[0][0].body as string);
+		expect(body.documentId).toBe("doc-uuid-xyz");
+		expect(body.slug).toBe("old-slug");
+	});
+
 	it("uses /remove endpoint (hard delete) not /delete (soft unpublish)", async () => {
 		mockRequestUrl.mockResolvedValue({
 			status: 200,
@@ -303,6 +319,41 @@ describe("deleteDocument", () => {
 		await expect(deleteDocument("jb_key", "nonexistent")).rejects.toThrow(
 			"Delete: Document not found"
 		);
+	});
+});
+
+// ---- getPortalUrl ----
+
+describe("getPortalUrl", () => {
+	it("POSTs to the www host (apex 301-downgrades POST→GET) and returns the portal url", async () => {
+		mockRequestUrl.mockResolvedValue({
+			status: 200,
+			json: { url: "https://billing.stripe.com/session/abc" },
+			headers: {},
+			text: "",
+			arrayBuffer: new ArrayBuffer(0),
+		} as never);
+
+		const url = await getPortalUrl("jb_test_key");
+
+		const call = mockRequestUrl.mock.calls[0][0];
+		expect(call.url).toBe("https://www.jotbird.com/api/stripe/portal-key");
+		expect(call.method).toBe("POST");
+		const body = JSON.parse(call.body as string);
+		expect(body.apiKey).toBe("jb_test_key");
+		expect(url).toBe("https://billing.stripe.com/session/abc");
+	});
+
+	it("throws when the response has no url", async () => {
+		mockRequestUrl.mockResolvedValue({
+			status: 200,
+			json: {},
+			headers: {},
+			text: "",
+			arrayBuffer: new ArrayBuffer(0),
+		} as never);
+
+		await expect(getPortalUrl("jb_test_key")).rejects.toThrow("No portal URL returned");
 	});
 });
 

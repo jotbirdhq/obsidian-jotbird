@@ -493,7 +493,7 @@ export default class JotBirdPlugin extends Plugin {
 				void (async () => {
 					try {
 						if (this.settings.apiKey) {
-							await deleteDocument(this.settings.apiKey, published.slug);
+							await deleteDocument(this.settings.apiKey, published.slug, published.documentId);
 						} else {
 							await trialDeleteDocument(
 								published.slug,
