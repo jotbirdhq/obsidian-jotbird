@@ -98,6 +98,10 @@ export class Setting {
 		cb(new ButtonComponent());
 		return this;
 	}
+	addDropdown(cb: (dd: DropdownComponent) => void) {
+		cb(new DropdownComponent());
+		return this;
+	}
 	then(cb: (setting: Setting) => void) {
 		cb(this);
 		return this;
@@ -121,6 +125,21 @@ class ToggleComponent {
 		return this;
 	}
 	onChange(_cb: (value: boolean) => void) {
+		return this;
+	}
+}
+
+class DropdownComponent {
+	addOption(_value: string, _display: string) {
+		return this;
+	}
+	addOptions(_options: Record<string, string>) {
+		return this;
+	}
+	setValue(_v: string) {
+		return this;
+	}
+	onChange(_cb: (value: string) => void) {
 		return this;
 	}
 }

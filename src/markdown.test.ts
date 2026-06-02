@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TFile, Vault } from "obsidian";
-import { processMarkdown, extractTitle } from "./markdown";
+import { processMarkdown, extractTitle, applyTitleMode } from "./markdown";
 
 // Mock the api module to control uploadImage behavior
 vi.mock("./api", () => ({
@@ -403,5 +403,70 @@ title: Test
 `;
 		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", false);
 		expect(result).toBe("Content with spacing");
+	});
+});
+
+// ---- applyTitleMode ----
+
+describe("applyTitleMode", () => {
+	describe("auto (default behavior preserved)", () => {
+		it("injects '# title' as a heading when the body has none", () => {
+			const file = makeFile("notes/My Note.md", "My Note");
+			const r = applyTitleMode("auto", "Body without heading", "Body without heading", file);
+			expect(r.renderTitle).toBe(false);
+			expect(r.title).toBe("My Note"); // falls back to filename
+			expect(r.markdown).toBe("# My Note\n\nBody without heading");
+		});
+
+		it("does not inject when the body already starts with a heading", () => {
+			const file = makeFile("notes/My Note.md", "My Note");
+			const r = applyTitleMode("auto", "# Real Heading\n\nText", "# Real Heading\n\nText", file);
+			expect(r.renderTitle).toBe(false);
+			expect(r.markdown).toBe("# Real Heading\n\nText");
+		});
+
+		it("prefers frontmatter title from raw content", () => {
+			const file = makeFile("notes/x.md", "x");
+			const content = "---\ntitle: FM Title\n---\nBody";
+			const r = applyTitleMode("auto", "Body", content, file);
+			expect(r.title).toBe("FM Title");
+			expect(r.markdown).toBe("# FM Title\n\nBody");
+		});
+	});
+
+	describe("filename", () => {
+		it("uses the filename and renders a dedicated header; body untouched", () => {
+			const file = makeFile("notes/Trial for Headings.md", "Trial for Headings");
+			const r = applyTitleMode("filename", "# Heading 1\n\nText", "# Heading 1\n\nText", file);
+			expect(r.renderTitle).toBe(true);
+			expect(r.title).toBe("Trial for Headings");
+			expect(r.markdown).toBe("# Heading 1\n\nText"); // body unchanged, not injected
+		});
+	});
+
+	describe("h1", () => {
+		it("pulls the first H1 as the title and removes it from the body", () => {
+			const file = makeFile("notes/x.md", "x");
+			const r = applyTitleMode("h1", "# Heading 1\n\nText\n\n## Heading 2", "raw", file);
+			expect(r.renderTitle).toBe(true);
+			expect(r.title).toBe("Heading 1");
+			expect(r.markdown).toBe("Text\n\n## Heading 2"); // first H1 removed, no duplicate
+		});
+
+		it("falls back to the filename when the body has no H1", () => {
+			const file = makeFile("notes/Fallback Name.md", "Fallback Name");
+			const r = applyTitleMode("h1", "Just text, no heading", "raw", file);
+			expect(r.renderTitle).toBe(true);
+			expect(r.title).toBe("Fallback Name");
+			expect(r.markdown).toBe("Just text, no heading");
+		});
+
+		it("does not treat an h2 as the title", () => {
+			const file = makeFile("notes/x.md", "x");
+			const r = applyTitleMode("h1", "## Only H2\n\nText", "raw", file);
+			// No real H1 → falls back to filename, body untouched
+			expect(r.title).toBe("x");
+			expect(r.markdown).toBe("## Only H2\n\nText");
+		});
 	});
 });

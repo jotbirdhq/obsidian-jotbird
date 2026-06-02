@@ -3,6 +3,8 @@ export interface JotBirdSettings {
 	stripTags: boolean;
 	autoCopyLink: boolean;
 	storeFrontmatter: boolean;
+	/** Where the published page title comes from. "auto" preserves the original behavior. */
+	titleMode: "auto" | "filename" | "h1";
 }
 
 export const DEFAULT_SETTINGS: JotBirdSettings = {
@@ -10,6 +12,7 @@ export const DEFAULT_SETTINGS: JotBirdSettings = {
 	stripTags: true,
 	autoCopyLink: true,
 	storeFrontmatter: true,
+	titleMode: "auto",
 };
 
 /** Mapping of file path -> published document info */

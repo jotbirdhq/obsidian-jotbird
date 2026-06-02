@@ -197,7 +197,8 @@ describe("publishFile", () => {
 			"# Hello World\n\nSome content",
 			"Hello World",
 			undefined, // no existing slug
-			undefined // no existing documentId
+			undefined, // no existing documentId
+			false // auto title mode → no dedicated header
 		);
 
 		const stored = plugin.publishedNotes["notes/hello.md"];
@@ -238,7 +239,8 @@ describe("publishFile", () => {
 			"# Updated content",
 			"Updated content",
 			"my-existing-doc", // existing slug passed
-			undefined // no existing documentId
+			undefined, // no existing documentId
+			false // auto title mode
 		);
 	});
 
@@ -281,7 +283,8 @@ describe("publishFile", () => {
 			"# Updated content",
 			"Updated content",
 			"old-slug",
-			"doc-uuid-abc"
+			"doc-uuid-abc",
+			false // auto title mode
 		);
 
 		// Stored mapping keeps the documentId and adopts the server's current slug/url
@@ -320,7 +323,8 @@ describe("publishFile", () => {
 			"# Trial Note\n\nContent",
 			"Trial Note",
 			undefined,
-			undefined
+			undefined,
+			false // auto title mode
 		);
 
 		const stored = plugin.publishedNotes["test.md"];
@@ -403,7 +407,8 @@ describe("publishFile", () => {
 			"# My Vacation\n\nJust some content without a heading",
 			"My Vacation",
 			undefined,
-			undefined
+			undefined,
+			false // auto title mode
 		);
 	});
 
@@ -433,7 +438,8 @@ describe("publishFile", () => {
 			"# My Document Title\n\nSome content",
 			"My Document Title",
 			undefined,
-			undefined
+			undefined,
+			false // auto title mode
 		);
 	});
 
@@ -463,7 +469,70 @@ describe("publishFile", () => {
 			"# My Custom Title\n\nContent here",
 			"My Custom Title",
 			undefined,
-			undefined
+			undefined,
+			false // auto title mode
+		);
+	});
+
+	it("titleMode 'filename' sends renderTitle and does not inject a body heading", async () => {
+		const plugin = createPlugin({
+			settings: { apiKey: "jb_key", stripTags: true, autoCopyLink: false, titleMode: "filename" } as PluginData["settings"],
+			publishedNotes: {},
+		});
+		await plugin.loadSettings();
+
+		const file = makeFile("notes/Trial for Headings.md", "Trial for Headings");
+		plugin.app.vault.read = vi.fn().mockResolvedValue("# Heading 1\n\nText");
+
+		mockPublishNote.mockResolvedValue({
+			slug: "trial-for-headings",
+			url: "https://share.jotbird.com/trial-for-headings",
+			title: "Trial for Headings",
+			expiresAt: null,
+			ttlDays: null,
+			created: true,
+		});
+
+		await plugin.publishFile(file);
+
+		expect(mockPublishNote).toHaveBeenCalledWith(
+			"jb_key",
+			"# Heading 1\n\nText", // body NOT modified — no injected filename heading
+			"Trial for Headings", // filename used as the page title
+			undefined,
+			undefined,
+			true // renderTitle on
+		);
+	});
+
+	it("titleMode 'h1' lifts the first heading into the title and removes it from the body", async () => {
+		const plugin = createPlugin({
+			settings: { apiKey: "jb_key", stripTags: true, autoCopyLink: false, titleMode: "h1" } as PluginData["settings"],
+			publishedNotes: {},
+		});
+		await plugin.loadSettings();
+
+		const file = makeFile("notes/x.md", "x");
+		plugin.app.vault.read = vi.fn().mockResolvedValue("# Heading 1\n\nText");
+
+		mockPublishNote.mockResolvedValue({
+			slug: "x",
+			url: "https://share.jotbird.com/x",
+			title: "Heading 1",
+			expiresAt: null,
+			ttlDays: null,
+			created: true,
+		});
+
+		await plugin.publishFile(file);
+
+		expect(mockPublishNote).toHaveBeenCalledWith(
+			"jb_key",
+			"Text", // first H1 pulled out of the body
+			"Heading 1",
+			undefined,
+			undefined,
+			true
 		);
 	});
 
@@ -525,11 +594,11 @@ describe("publishFile", () => {
 		// First call: update attempt with old slug
 		expect(mockPublishNote).toHaveBeenCalledTimes(2);
 		expect(mockPublishNote.mock.calls[0]).toEqual([
-			"jb_key", "# Expired Note\n\nContent", "Expired Note", "old-expired-slug", undefined,
+			"jb_key", "# Expired Note\n\nContent", "Expired Note", "old-expired-slug", undefined, false,
 		]);
 		// Second call: fresh publish without slug
 		expect(mockPublishNote.mock.calls[1]).toEqual([
-			"jb_key", "# Expired Note\n\nContent", "Expired Note",
+			"jb_key", "# Expired Note\n\nContent", "Expired Note", undefined, undefined, false,
 		]);
 
 		// data.json updated with new slug
@@ -576,11 +645,11 @@ describe("publishFile", () => {
 		// First call: update with old slug and editToken
 		expect(mockTrialPublish).toHaveBeenCalledTimes(2);
 		expect(mockTrialPublish.mock.calls[0]).toEqual([
-			"fp_test", "# Trial Expired\n\nContent", "Trial Expired", "old-trial-slug", "tok_old",
+			"fp_test", "# Trial Expired\n\nContent", "Trial Expired", "old-trial-slug", "tok_old", false,
 		]);
 		// Second call: fresh publish without slug/editToken
 		expect(mockTrialPublish.mock.calls[1]).toEqual([
-			"fp_test", "# Trial Expired\n\nContent", "Trial Expired",
+			"fp_test", "# Trial Expired\n\nContent", "Trial Expired", undefined, undefined, false,
 		]);
 
 		const stored = plugin.publishedNotes["notes/expired-trial.md"];
@@ -992,7 +1061,8 @@ describe("unauthenticated publishing", () => {
 			"# Updated content",
 			"Updated content",
 			"trial-existing",
-			"tok_edit789"
+			"tok_edit789",
+			false // auto title mode
 		);
 	});
 

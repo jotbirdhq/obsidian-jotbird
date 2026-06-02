@@ -223,3 +223,54 @@ export function extractTitle(content: string, file: TFile): string {
 	// Fall back to filename
 	return file.basename;
 }
+
+export type TitleMode = "auto" | "filename" | "h1";
+
+export interface ResolvedTitle {
+	/** The title string to publish (used for <title>/OG and, when renderTitle, the page header). */
+	title: string;
+	/** When true, the server renders a dedicated page-title header from `title`. */
+	renderTitle: boolean;
+	/** The (possibly adjusted) processed markdown body to publish. */
+	markdown: string;
+}
+
+/**
+ * Resolve the published title and adjust the body per the user's title mode.
+ * `markdown` is the already-processed body; `content` is the raw note.
+ *
+ * - "auto": historical behavior — inject `# <title>` as a body heading only when the
+ *   body has none. No dedicated header (renderTitle = false). Output is unchanged.
+ * - "filename": render the filename as a dedicated page title; body left untouched.
+ * - "h1": render the body's first H1 as the page title and remove it from the body so
+ *   it isn't shown twice; falls back to the filename when the body has no H1.
+ */
+export function applyTitleMode(
+	mode: TitleMode,
+	markdown: string,
+	content: string,
+	file: TFile
+): ResolvedTitle {
+	if (mode === "filename") {
+		return { title: file.basename, renderTitle: true, markdown };
+	}
+
+	if (mode === "h1") {
+		const h1Match = markdown.match(/^#\s+(.+)$/m);
+		if (h1Match) {
+			// Remove the matched H1 line (and a trailing blank line) so it isn't duplicated.
+			const body = markdown.replace(/^#\s+.+$\r?\n?/m, "").replace(/^\r?\n/, "");
+			return { title: h1Match[1].trim(), renderTitle: true, markdown: body };
+		}
+		// No H1 in the body — fall back to the filename.
+		return { title: file.basename, renderTitle: true, markdown };
+	}
+
+	// "auto" (default): preserve historical behavior exactly.
+	const title = extractTitle(content, file);
+	let body = markdown;
+	if (!/^# /.test(body)) {
+		body = `# ${title}\n\n${body}`;
+	}
+	return { title, renderTitle: false, markdown: body };
+}

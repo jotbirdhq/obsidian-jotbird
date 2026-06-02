@@ -13,7 +13,7 @@ import {
 	trialDeleteDocument,
 	claimDocument,
 } from "./api";
-import { processMarkdown, extractTitle } from "./markdown";
+import { processMarkdown, applyTitleMode } from "./markdown";
 import { JotBirdSettingTab } from "./settings";
 import { ConfirmModal, DocumentListModal } from "./modals";
 
@@ -379,18 +379,22 @@ export default class JotBirdPlugin extends Plugin {
 
 		try {
 			const content = await this.app.vault.read(file);
-			const title = extractTitle(content, file);
-			let markdown = await processMarkdown(
+			const processed = await processMarkdown(
 				content,
 				this.app.vault,
 				file,
 				this.settings.apiKey,
 				this.settings.stripTags
 			);
-			// Prepend title as H1 if the content doesn't already start with one
-			if (!/^# /.test(markdown)) {
-				markdown = `# ${title}\n\n${markdown}`;
-			}
+			// Resolve the title and body per the user's title mode. "auto" preserves the
+			// original behavior (inject `# title` only when the body has no heading);
+			// "filename"/"h1" render a dedicated page-title header on the published page.
+			const { title, renderTitle, markdown } = applyTitleMode(
+				this.settings.titleMode,
+				processed,
+				content,
+				file
+			);
 
 			let result;
 			let retried = false;
@@ -401,7 +405,8 @@ export default class JotBirdPlugin extends Plugin {
 						markdown,
 						title,
 						existing?.slug,
-						existing?.documentId
+						existing?.documentId,
+						renderTitle
 					);
 				} else {
 					result = await trialPublish(
@@ -409,7 +414,8 @@ export default class JotBirdPlugin extends Plugin {
 						markdown,
 						title,
 						existing?.slug,
-						existing?.editToken
+						existing?.editToken,
+						renderTitle
 					);
 				}
 			} catch (e) {
@@ -420,13 +426,19 @@ export default class JotBirdPlugin extends Plugin {
 						result = await publishNote(
 							this.settings.apiKey,
 							markdown,
-							title
+							title,
+							undefined,
+							undefined,
+							renderTitle
 						);
 					} else {
 						result = await trialPublish(
 							this.deviceFingerprint,
 							markdown,
-							title
+							title,
+							undefined,
+							undefined,
+							renderTitle
 						);
 					}
 				} else {

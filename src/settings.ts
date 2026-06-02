@@ -1,5 +1,6 @@
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type JotBirdPlugin from "./main";
+import type { JotBirdSettings } from "./types";
 import { getPortalUrl } from "./api";
 
 const SITE_URL = "https://jotbird.com";
@@ -126,6 +127,23 @@ export class JotBirdSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.stripTags)
 					.onChange(async (value) => {
 						this.plugin.settings.stripTags = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Page title")
+			.setDesc(
+				"What to show as the title on the published page. Automatic keeps the original behavior (adds a heading from the filename only if the note has none)."
+			)
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("auto", "Automatic")
+					.addOption("filename", "Filename")
+					.addOption("h1", "First heading")
+					.setValue(this.plugin.settings.titleMode)
+					.onChange(async (value) => {
+						this.plugin.settings.titleMode = value as JotBirdSettings["titleMode"];
 						await this.plugin.saveSettings();
 					})
 			);

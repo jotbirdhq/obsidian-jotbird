@@ -9,7 +9,7 @@ import {
 
 const BASE_URL = "https://api.jotbird.com";
 const IMAGE_UPLOAD_URL = `${BASE_URL}/preview/upload-image`;
-const USER_AGENT = "jotbird-obsidian/0.4.7";
+const USER_AGENT = "jotbird-obsidian/0.4.8";
 
 function headers(apiKey: string): Record<string, string> {
 	const h: Record<string, string> = { "User-Agent": USER_AGENT };
@@ -46,9 +46,10 @@ export async function publishNote(
 	markdown: string,
 	title: string,
 	slug?: string,
-	documentId?: string
+	documentId?: string,
+	renderTitle?: boolean
 ): Promise<PublishResponse> {
-	const body: Record<string, string> = { markdown, title };
+	const body: Record<string, string | boolean> = { markdown, title };
 	// documentId is the authoritative identifier for updates; the server resolves
 	// the document's current slug/namespace from it. slug is still sent for the
 	// first publish and as a fallback for notes published before documentId existed.
@@ -57,6 +58,10 @@ export async function publishNote(
 	}
 	if (slug) {
 		body.slug = slug;
+	}
+	// Opt-in dedicated page-title header (non-Automatic title modes).
+	if (renderTitle) {
+		body.renderTitle = true;
 	}
 
 	const { status, json } = await apiRequest({
@@ -123,11 +128,13 @@ export async function trialPublish(
 	markdown: string,
 	title: string,
 	slug?: string,
-	editToken?: string
+	editToken?: string,
+	renderTitle?: boolean
 ): Promise<PublishResponse> {
-	const body: Record<string, string> = { markdown, title };
+	const body: Record<string, string | boolean> = { markdown, title };
 	if (slug) body.slug = slug;
 	if (editToken) body.editToken = editToken;
+	if (renderTitle) body.renderTitle = true;
 
 	const { status, json } = await apiRequest({
 		url: `${BASE_URL}/trial/publish`,

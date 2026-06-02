@@ -102,6 +102,23 @@ describe("publishNote", () => {
 		expect(result.username).toBe("matt");
 	});
 
+	it("sends renderTitle when requested, and omits it otherwise", async () => {
+		mockRequestUrl.mockResolvedValue({
+			status: 201,
+			json: { slug: "s", url: "https://share.jotbird.com/s", title: "T", expiresAt: null, ttlDays: null, created: true },
+			headers: {},
+			text: "",
+			arrayBuffer: new ArrayBuffer(0),
+		} as never);
+
+		await publishNote("jb_test_key", "# T", "T", undefined, undefined, true);
+		expect(JSON.parse(mockRequestUrl.mock.calls[0][0].body as string).renderTitle).toBe(true);
+
+		mockRequestUrl.mockClear();
+		await publishNote("jb_test_key", "# T", "T");
+		expect(JSON.parse(mockRequestUrl.mock.calls[0][0].body as string).renderTitle).toBeUndefined();
+	});
+
 	it("throws on 401 unauthorized", async () => {
 		mockRequestUrl.mockResolvedValue({
 			status: 401,
