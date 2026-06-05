@@ -681,6 +681,159 @@ describe("publishFile", () => {
 		// Old mapping should remain unchanged
 		expect(plugin.publishedNotes["notes/fail.md"].slug).toBe("existing-slug");
 	});
+
+	// ---- Anonymous → account transition (claim-at-publish) ----
+	// Repro: a note published anonymously (trial) carries an editToken. The user later
+	// adds an API key, so publishFile switches to the account path. Without claiming
+	// first, cli/publish 403s ("Document not owned by user"). The fix claims it first.
+
+	it("claims an anonymous note before publishing once an API key is present", async () => {
+		const anon: PublishedNote = {
+			slug: "gentle-shimmering-dunefield",
+			url: "https://share.jotbird.com/gentle-shimmering-dunefield",
+			editToken: "tok_anon_123",
+			publishedAt: "2026-06-05T04:59:00.000Z",
+		};
+		const plugin = createPlugin({
+			settings: { apiKey: "jb_key", stripTags: true, autoCopyLink: false },
+			publishedNotes: { "notes/anon.md": anon },
+		});
+		await plugin.loadSettings();
+
+		const file = makeFile("notes/anon.md", "anon");
+		plugin.app.vault.read = vi.fn().mockResolvedValue("# Updated body");
+
+		mockClaimDocument.mockResolvedValue({
+			ok: true,
+			slug: "gentle-shimmering-dunefield",
+			url: "https://share.jotbird.com/gentle-shimmering-dunefield",
+			expiresAt: null,
+			ttlDays: null,
+		});
+		mockPublishNote.mockResolvedValue({
+			slug: "gentle-shimmering-dunefield",
+			url: "https://share.jotbird.com/gentle-shimmering-dunefield",
+			title: "Updated body",
+			expiresAt: null,
+			ttlDays: null,
+			created: false,
+		});
+
+		await plugin.publishFile(file);
+
+		// Claimed first, with the stored slug + editToken...
+		expect(mockClaimDocument).toHaveBeenCalledWith("jb_key", "gentle-shimmering-dunefield", "tok_anon_123");
+		// ...then published via the account path.
+		expect(mockPublishNote).toHaveBeenCalledTimes(1);
+		expect(mockTrialPublish).not.toHaveBeenCalled();
+		// Claim must happen before publish.
+		expect(mockClaimDocument.mock.invocationCallOrder[0])
+			.toBeLessThan(mockPublishNote.mock.invocationCallOrder[0]);
+		// Publish uses the now-account-owned slug from the claim, with no stale documentId.
+		expect(mockPublishNote).toHaveBeenCalledWith(
+			"jb_key",
+			expect.any(String),
+			expect.any(String),
+			"gentle-shimmering-dunefield",
+			undefined,
+			false
+		);
+		// Local record is now account-owned: editToken dropped.
+		expect(plugin.publishedNotes["notes/anon.md"].editToken).toBeUndefined();
+	});
+
+	it("does NOT claim when the note is already account-owned (no editToken)", async () => {
+		const owned: PublishedNote = {
+			slug: "my-owned-doc",
+			url: "https://share.jotbird.com/my-owned-doc",
+			publishedAt: "2026-01-01T00:00:00.000Z",
+		};
+		const plugin = createPlugin({
+			settings: { apiKey: "jb_key", stripTags: true, autoCopyLink: false },
+			publishedNotes: { "notes/owned.md": owned },
+		});
+		await plugin.loadSettings();
+
+		const file = makeFile("notes/owned.md", "owned");
+		plugin.app.vault.read = vi.fn().mockResolvedValue("# Body");
+		mockPublishNote.mockResolvedValue({
+			slug: "my-owned-doc",
+			url: "https://share.jotbird.com/my-owned-doc",
+			title: "Body",
+			expiresAt: null,
+			ttlDays: null,
+			created: false,
+		});
+
+		await plugin.publishFile(file);
+
+		expect(mockClaimDocument).not.toHaveBeenCalled();
+		expect(mockPublishNote).toHaveBeenCalledTimes(1);
+	});
+
+	it("does NOT claim an anonymous note when there is no API key (stays on the trial path)", async () => {
+		const anon: PublishedNote = {
+			slug: "anon-slug",
+			url: "https://share.jotbird.com/anon-slug",
+			editToken: "tok_anon",
+			publishedAt: "2026-06-05T04:59:00.000Z",
+		};
+		const plugin = createPlugin({
+			settings: { apiKey: "", stripTags: true, autoCopyLink: false },
+			publishedNotes: { "notes/anon.md": anon },
+			deviceFingerprint: "fp_test",
+		});
+		await plugin.loadSettings();
+
+		const file = makeFile("notes/anon.md", "anon");
+		plugin.app.vault.read = vi.fn().mockResolvedValue("# Body");
+		mockTrialPublish.mockResolvedValue({
+			slug: "anon-slug",
+			url: "https://share.jotbird.com/anon-slug",
+			title: "Body",
+			expiresAt: "2026-07-05T00:00:00.000Z",
+			ttlDays: 30,
+			created: false,
+			editToken: "tok_anon",
+		});
+
+		await plugin.publishFile(file);
+
+		expect(mockClaimDocument).not.toHaveBeenCalled();
+		expect(mockTrialPublish).toHaveBeenCalledWith(
+			"fp_test", "# Body", "Body", "anon-slug", "tok_anon", false
+		);
+	});
+
+	it("falls through to publish if the claim fails (does not throw, still publishes)", async () => {
+		const anon: PublishedNote = {
+			slug: "anon-slug",
+			url: "https://share.jotbird.com/anon-slug",
+			editToken: "tok_anon",
+			publishedAt: "2026-06-05T04:59:00.000Z",
+		};
+		const plugin = createPlugin({
+			settings: { apiKey: "jb_key", stripTags: true, autoCopyLink: false },
+			publishedNotes: { "notes/anon.md": anon },
+		});
+		await plugin.loadSettings();
+
+		const file = makeFile("notes/anon.md", "anon");
+		plugin.app.vault.read = vi.fn().mockResolvedValue("# Body");
+		mockClaimDocument.mockRejectedValue(new Error("Claim: transient failure"));
+		mockPublishNote.mockResolvedValue({
+			slug: "anon-slug",
+			url: "https://share.jotbird.com/anon-slug",
+			title: "Body",
+			expiresAt: null,
+			ttlDays: null,
+			created: false,
+		});
+
+		await expect(plugin.publishFile(file)).resolves.toBeUndefined();
+		expect(mockClaimDocument).toHaveBeenCalledTimes(1);
+		expect(mockPublishNote).toHaveBeenCalledTimes(1);
+	});
 });
 
 // ---- File rename tracking ----

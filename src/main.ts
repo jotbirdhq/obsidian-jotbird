@@ -396,6 +396,34 @@ export default class JotBirdPlugin extends Plugin {
 				file
 			);
 
+			// Anonymous → account transition. If we now have an API key but this note is
+			// still an anonymous doc (it carries an editToken from an earlier trial/anonymous
+			// publish), claim it to the account BEFORE publishing. Otherwise the account-
+			// authenticated publishNote() below 403s ("Document not owned by user") — the doc
+			// isn't account-owned until claimed. The deep-link "Connect account" flow runs
+			// claimAnonymousDocuments(), but pasting the API key into Settings does not, so we
+			// claim lazily at publish time to cover every path (and stale/raced local state).
+			if (hasApiKey && existing && existing.editToken && existing.slug) {
+				try {
+					const claim = await claimDocument(
+						this.settings.apiKey,
+						existing.slug,
+						existing.editToken
+					);
+					existing.slug = claim.slug;
+					existing.url = claim.url;
+					existing.editToken = undefined; // now account-owned
+					this.publishedNotes[file.path] = existing;
+					await this.saveSettings();
+				} catch (e) {
+					// Claim failed (already claimed by this account, transient, etc.).
+					// Fall through to publishNote — it succeeds if the doc is already
+					// account-owned, or surfaces its own error otherwise. Log so a real
+					// claim failure is still diagnosable (the editToken is preserved).
+					console.warn("JotBird: claim-before-publish failed; publishing anyway", e);
+				}
+			}
+
 			let result;
 			let retried = false;
 			try {
