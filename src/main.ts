@@ -29,6 +29,10 @@ export default class JotBirdPlugin extends Plugin {
 	// File paths with a publish currently in flight, to block re-entrant calls.
 	private publishing = new Set<string>();
 
+	// Obsidian's plugin loader awaits async onload() on every supported version; the
+	// 1.4.x typings (our minAppVersion floor) type onload() as void-returning, which
+	// trips no-misused-promises. Safe to ignore — async onload is the standard pattern.
+	// eslint-disable-next-line @typescript-eslint/no-misused-promises
 	async onload(): Promise<void> {
 		await this.loadSettings();
 		// Defer frontmatter scan until the workspace is ready so it doesn't

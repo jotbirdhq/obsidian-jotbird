@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-jotbird",
-	"version": "0.4.9",
+	"version": "0.4.10",
 	"description": "Publish Obsidian notes to JotBird",
 	"main": "main.js",
 	"scripts": {
@@ -19,8 +19,13 @@
 		"esbuild": "0.25.5",
 		"eslint": "^9.39.4",
 		"eslint-plugin-obsidianmd": "^0.3.0",
-		"obsidian": "latest",
+		"obsidian": "~1.4.4",
 		"typescript": "5.8.3",
 		"vitest": "^3.0.0"
+	},
+	"overrides": {
+		"vite": {
+			"esbuild": "0.27.2"
+		}
 	}
 }
