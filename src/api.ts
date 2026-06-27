@@ -9,10 +9,24 @@ import {
 
 const BASE_URL = "https://api.jotbird.com";
 const IMAGE_UPLOAD_URL = `${BASE_URL}/preview/upload-image`;
-const USER_AGENT = "jotbird-obsidian/0.4.8";
+// Default until the plugin sets the real manifest version at load via
+// setClientVersion(). The 0.0.0 sentinel makes an uninitialized client obvious
+// in the logs; it should never appear in production, where onload() sets it
+// before any request can fire.
+let userAgent = "jotbird-obsidian/0.0.0";
+
+/**
+ * Set the User-Agent client version from the plugin manifest. Called once at
+ * plugin load (main.ts onload passes this.manifest.version) so every request
+ * reports the real installed version instead of a hardcoded literal that drifts
+ * out of date each release.
+ */
+export function setClientVersion(version: string): void {
+	userAgent = `jotbird-obsidian/${version}`;
+}
 
 function headers(apiKey: string): Record<string, string> {
-	const h: Record<string, string> = { "User-Agent": USER_AGENT };
+	const h: Record<string, string> = { "User-Agent": userAgent };
 	if (apiKey) {
 		h.Authorization = `Bearer ${apiKey}`;
 	}
@@ -142,7 +156,7 @@ export async function trialPublish(
 		contentType: "application/json",
 		body: JSON.stringify(body),
 		headers: {
-			"User-Agent": USER_AGENT,
+			"User-Agent": userAgent,
 			"X-Device-Fingerprint": deviceFingerprint,
 		},
 	});
@@ -162,7 +176,7 @@ export async function trialDeleteDocument(
 		contentType: "application/json",
 		body: JSON.stringify({ slug, editToken }),
 		headers: {
-			"User-Agent": USER_AGENT,
+			"User-Agent": userAgent,
 			"X-Device-Fingerprint": deviceFingerprint,
 		},
 	});

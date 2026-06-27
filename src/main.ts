@@ -12,6 +12,7 @@ import {
 	deleteDocument,
 	trialDeleteDocument,
 	claimDocument,
+	setClientVersion,
 } from "./api";
 import { processMarkdown, applyTitleMode } from "./markdown";
 import { JotBirdSettingTab } from "./settings";
@@ -29,8 +30,14 @@ export default class JotBirdPlugin extends Plugin {
 	// File paths with a publish currently in flight, to block re-entrant calls.
 	private publishing = new Set<string>();
 
-	// eslint-disable-next-line @typescript-eslint/no-misused-promises -- async onload() is the standard Obsidian pattern (the loader awaits it); only our pinned 1.4.x typings type onload() as void-returning, which is what trips this rule.
+	// async onload() is the standard Obsidian pattern — the plugin loader awaits it.
+	// The pinned 1.4.x typings type onload() as void-returning, which trips
+	// @typescript-eslint/no-misused-promises, so the directive below is required.
+	// eslint-disable-next-line @typescript-eslint/no-misused-promises -- async onload() is awaited by the Obsidian loader; only the pinned 1.4.x typings type it as void-returning.
 	async onload(): Promise<void> {
+		// Stamp the real installed version onto outgoing requests' User-Agent
+		// before anything can publish, so the worker logs the accurate version.
+		setClientVersion(this.manifest.version);
 		await this.loadSettings();
 		// Defer frontmatter scan until the workspace is ready so it doesn't
 		// block plugin startup on vaults with many files.
@@ -383,7 +390,6 @@ export default class JotBirdPlugin extends Plugin {
 			const processed = await processMarkdown(
 				content,
 				this.app.vault,
-				file,
 				this.settings.apiKey,
 				this.settings.stripTags
 			);

@@ -88,8 +88,7 @@ function isInsideCode(offset: number, regions: Array<{ start: number; end: numbe
 async function processImages(
 	md: string,
 	vault: Vault,
-	apiKey: string,
-	sourceFile: TFile
+	apiKey: string
 ): Promise<string> {
 	const imageExtensions = /\.(png|jpe?g|gif|webp|svg)$/i;
 	const codeRegions = buildCodeRegions(md);
@@ -106,7 +105,7 @@ async function processImages(
 		const fileName = match[1];
 		if (!imageExtensions.test(fileName)) continue;
 
-		const url = await resolveAndUploadImage(vault, fileName, apiKey, sourceFile);
+		const url = await resolveAndUploadImage(vault, fileName, apiKey);
 		if (url) {
 			replacements.push({ original: imageName, url });
 		}
@@ -122,7 +121,7 @@ async function processImages(
 		const path = match[2];
 		if (!imageExtensions.test(path)) continue;
 
-		const url = await resolveAndUploadImage(vault, path, apiKey, sourceFile);
+		const url = await resolveAndUploadImage(vault, path, apiKey);
 		if (url) {
 			replacements.push({ original: imageName, url: `![${alt}](${url})` });
 		}
@@ -140,8 +139,7 @@ async function processImages(
 async function resolveAndUploadImage(
 	vault: Vault,
 	fileName: string,
-	apiKey: string,
-	sourceFile: TFile
+	apiKey: string
 ): Promise<string | null> {
 	// Try to resolve the file using Obsidian's link resolution
 	const resolved = vault.getFiles().find((f) => {
@@ -182,14 +180,13 @@ function getMimeType(ext: string): string | null {
 export async function processMarkdown(
 	content: string,
 	vault: Vault,
-	sourceFile: TFile,
 	apiKey: string,
 	shouldStripTags: boolean
 ): Promise<string> {
 	let md = stripFrontmatter(content);
 	md = stripComments(md);
 	// Process images before converting wiki links, so ![[image.png]] is still intact
-	md = await processImages(md, vault, apiKey, sourceFile);
+	md = await processImages(md, vault, apiKey);
 	md = convertWikiLinks(md);
 	if (shouldStripTags) {
 		md = stripTags(md);

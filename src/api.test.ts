@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { requestUrl } from "obsidian";
-import { publishNote, listDocuments, deleteDocument, uploadImage, trialPublish, trialDeleteDocument, getPortalUrl } from "./api";
+import { publishNote, listDocuments, deleteDocument, uploadImage, trialPublish, trialDeleteDocument, getPortalUrl, setClientVersion } from "./api";
 
 const mockRequestUrl = vi.mocked(requestUrl);
 
@@ -579,5 +579,29 @@ describe("uploadImage", () => {
 		const call = mockRequestUrl.mock.calls[0][0];
 		expect(call.headers?.Authorization).toBeUndefined();
 		expect(call.headers?.["User-Agent"]).toMatch(/^jotbird-obsidian\/\d+\.\d+\.\d+$/);
+	});
+});
+
+// ---- setClientVersion ----
+
+describe("setClientVersion", () => {
+	// Restore the module default so this block doesn't leak version state into
+	// other suites (which only assert the User-Agent's shape, not its value).
+	afterEach(() => setClientVersion("0.0.0"));
+
+	it("stamps the supplied manifest version onto the request User-Agent", async () => {
+		setClientVersion("9.8.7");
+		mockRequestUrl.mockResolvedValue({
+			status: 200,
+			json: { documents: [] },
+			headers: {},
+			text: "",
+			arrayBuffer: new ArrayBuffer(0),
+		} as never);
+
+		await listDocuments("jb_test_key");
+
+		const call = mockRequestUrl.mock.calls[0][0];
+		expect(call.headers?.["User-Agent"]).toBe("jotbird-obsidian/9.8.7");
 	});
 });

@@ -12,6 +12,7 @@ vi.mock("./api", () => ({
 	trialDeleteDocument: vi.fn(),
 	claimDocument: vi.fn(),
 	uploadImage: vi.fn(),
+	setClientVersion: vi.fn(),
 }));
 
 // Mock the modals module

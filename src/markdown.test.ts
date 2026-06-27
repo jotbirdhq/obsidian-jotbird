@@ -34,7 +34,7 @@ title: My Note
 tags: [test]
 ---
 # Hello World`;
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, makeVault(), "key", false);
 		expect(result).toBe("# Hello World");
 	});
 
@@ -45,13 +45,13 @@ date: 2024-01-01
 draft: false
 ---
 Content here`;
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, makeVault(), "key", false);
 		expect(result).toBe("Content here");
 	});
 
 	it("leaves content untouched when no frontmatter present", async () => {
 		const input = "Just some markdown content";
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, makeVault(), "key", false);
 		expect(result).toBe("Just some markdown content");
 	});
 
@@ -64,13 +64,13 @@ Content
 ---
 
 More content`;
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, makeVault(), "key", false);
 		expect(result).toBe("Content\n\n---\n\nMore content");
 	});
 
 	it("handles frontmatter with CRLF line endings", async () => {
 		const input = "---\r\ntitle: Test\r\n---\r\nContent";
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, makeVault(), "key", false);
 		expect(result).toBe("Content");
 	});
 });
@@ -80,31 +80,31 @@ More content`;
 describe("wiki link conversion", () => {
 	it("converts simple wiki links to plain text", async () => {
 		const input = "See [[My Page]] for details";
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, makeVault(), "key", false);
 		expect(result).toBe("See My Page for details");
 	});
 
 	it("converts aliased wiki links to display text", async () => {
 		const input = "See [[My Page|the page]] for details";
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, makeVault(), "key", false);
 		expect(result).toBe("See the page for details");
 	});
 
 	it("handles multiple wiki links in one line", async () => {
 		const input = "Link to [[Page A]] and [[Page B|B page]]";
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, makeVault(), "key", false);
 		expect(result).toBe("Link to Page A and B page");
 	});
 
 	it("handles wiki links with paths", async () => {
 		const input = "See [[folder/My Page]]";
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, makeVault(), "key", false);
 		expect(result).toBe("See folder/My Page");
 	});
 
 	it("does not modify standard markdown links", async () => {
 		const input = "See [display text](https://example.com)";
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, makeVault(), "key", false);
 		expect(result).toBe("See [display text](https://example.com)");
 	});
 });
@@ -114,7 +114,7 @@ describe("wiki link conversion", () => {
 describe("comment stripping", () => {
 	it("strips inline comments", async () => {
 		const input = "Hello %%this is hidden%% world";
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, makeVault(), "key", false);
 		expect(result).toBe("Hello  world");
 	});
 
@@ -125,19 +125,19 @@ This is a
 multi-line comment
 %%
 After`;
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, makeVault(), "key", false);
 		expect(result).toBe("Before\n\nAfter");
 	});
 
 	it("strips multiple comments in the same content", async () => {
 		const input = "A %%hidden1%% B %%hidden2%% C";
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, makeVault(), "key", false);
 		expect(result).toBe("A  B  C");
 	});
 
 	it("leaves content untouched when no comments", async () => {
 		const input = "No comments here % just a percent sign";
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, makeVault(), "key", false);
 		expect(result).toBe("No comments here % just a percent sign");
 	});
 });
@@ -147,13 +147,13 @@ After`;
 describe("callout passthrough", () => {
 	it("passes callout syntax through unchanged for server-side rendering", async () => {
 		const input = "> [!note] My Title\n> Some content";
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, makeVault(), "key", false);
 		expect(result).toBe("> [!note] My Title\n> Some content");
 	});
 
 	it("passes regular blockquotes through unchanged", async () => {
 		const input = "> This is a normal blockquote";
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, makeVault(), "key", false);
 		expect(result).toBe("> This is a normal blockquote");
 	});
 });
@@ -163,31 +163,31 @@ describe("callout passthrough", () => {
 describe("tag stripping", () => {
 	it("strips tags when enabled", async () => {
 		const input = "Some text #tag1 and #tag2";
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", true);
+		const result = await processMarkdown(input, makeVault(), "key", true);
 		expect(result).toBe("Some text  and");
 	});
 
 	it("preserves tags when disabled", async () => {
 		const input = "Some text #tag1 and #tag2";
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, makeVault(), "key", false);
 		expect(result).toBe("Some text #tag1 and #tag2");
 	});
 
 	it("does not strip markdown headings", async () => {
 		const input = "# Heading 1\n## Heading 2\n### Heading 3";
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", true);
+		const result = await processMarkdown(input, makeVault(), "key", true);
 		expect(result).toBe("# Heading 1\n## Heading 2\n### Heading 3");
 	});
 
 	it("strips tags with slashes", async () => {
 		const input = "Text #parent/child end";
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", true);
+		const result = await processMarkdown(input, makeVault(), "key", true);
 		expect(result).toBe("Text  end");
 	});
 
 	it("strips tag at start of line", async () => {
 		const input = "#standaloneTag";
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", true);
+		const result = await processMarkdown(input, makeVault(), "key", true);
 		expect(result).toBe("");
 	});
 });
@@ -211,7 +211,7 @@ describe("image processing", () => {
 		mockUploadImage.mockResolvedValue({ url: "https://share.jotbird.com/images/abc.png" });
 
 		const input = "Here is an image ![[photo.png]]";
-		const result = await processMarkdown(input, vault, makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, vault, "key", false);
 		expect(result).toBe("Here is an image ![](https://share.jotbird.com/images/abc.png)");
 		expect(mockUploadImage).toHaveBeenCalledWith("key", expect.any(ArrayBuffer), "photo.png", "image/png");
 	});
@@ -228,7 +228,7 @@ describe("image processing", () => {
 		mockUploadImage.mockResolvedValue({ url: "https://share.jotbird.com/images/def.jpg" });
 
 		const input = "![[img.jpg|my alt text]]";
-		const result = await processMarkdown(input, vault, makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, vault, "key", false);
 		expect(result).toBe("![](https://share.jotbird.com/images/def.jpg)");
 	});
 
@@ -244,13 +244,13 @@ describe("image processing", () => {
 		mockUploadImage.mockResolvedValue({ url: "https://share.jotbird.com/images/xyz.png" });
 
 		const input = "![My chart](images/chart.png)";
-		const result = await processMarkdown(input, vault, makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, vault, "key", false);
 		expect(result).toBe("![My chart](https://share.jotbird.com/images/xyz.png)");
 	});
 
 	it("leaves external image URLs unchanged", async () => {
 		const input = "![External](https://example.com/photo.png)";
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, makeVault(), "key", false);
 		expect(result).toBe("![External](https://example.com/photo.png)");
 		expect(mockUploadImage).not.toHaveBeenCalled();
 	});
@@ -258,14 +258,14 @@ describe("image processing", () => {
 	it("skips images that cannot be found in the vault", async () => {
 		const vault = makeVault([]); // No files in vault
 		const input = "![[missing.png]]";
-		const result = await processMarkdown(input, vault, makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, vault, "key", false);
 		// Image not found, so ![[missing.png]] stays, then convertWikiLinks turns it to !missing.png
 		expect(result).toBe("!missing.png");
 	});
 
 	it("skips non-image wiki embeds", async () => {
 		const input = "![[some-note]]";
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, makeVault(), "key", false);
 		// Non-image embeds pass through image processing unchanged,
 		// then convertWikiLinks converts ![[some-note]] to !some-note
 		expect(result).toBe("!some-note");
@@ -282,7 +282,7 @@ describe("image processing", () => {
 		vault.readBinary = vi.fn().mockRejectedValue(new Error("read error"));
 
 		const input = "![[fail.png]]";
-		const result = await processMarkdown(input, vault, makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, vault, "key", false);
 		// Upload failed, so ![[fail.png]] stays, then convertWikiLinks turns it to !fail.png
 		expect(result).toBe("!fail.png");
 	});
@@ -299,7 +299,7 @@ describe("image processing", () => {
 		mockUploadImage.mockResolvedValue({ url: "https://share.jotbird.com/images/svg.svg" });
 
 		const input = "![[icon.svg]]";
-		const result = await processMarkdown(input, vault, makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, vault, "key", false);
 		expect(result).toBe("![](https://share.jotbird.com/images/svg.svg)");
 		expect(mockUploadImage).toHaveBeenCalledWith("key", expect.any(ArrayBuffer), "icon.svg", "image/svg+xml");
 	});
@@ -385,7 +385,7 @@ See [[Other Page|that page]] for more %%secret note%% details.
 
 Some text with [[Simple Link]].`;
 
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", true);
+		const result = await processMarkdown(input, makeVault(), "key", true);
 		// After stripping tags "#tag1 #tag2" becomes " " (trailing space from replacement),
 		// then the whole result is trimmed at boundaries
 		expect(result).toBe(
@@ -401,7 +401,7 @@ title: Test
   Content with spacing
 
 `;
-		const result = await processMarkdown(input, makeVault(), makeFile("test.md"), "key", false);
+		const result = await processMarkdown(input, makeVault(), "key", false);
 		expect(result).toBe("Content with spacing");
 	});
 });
