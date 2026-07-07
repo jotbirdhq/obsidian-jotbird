@@ -141,10 +141,24 @@ async function resolveAndUploadImage(
 	fileName: string,
 	apiKey: string
 ): Promise<string | null> {
+	// Standard-markdown image links percent-encode special characters (a space becomes
+	// %20), but Obsidian's on-disk file paths use the literal characters. Match against
+	// both the raw and URL-decoded forms so e.g. "assets/Pasted%20image%20….png" resolves
+	// to the real "assets/Pasted image ….png" file (Obsidian's default pasted-image
+	// naming). Wiki-style links aren't encoded, so the decoded form equals the raw one and
+	// this is a no-op for them.
+	const candidates = [fileName];
+	try {
+		const decoded = decodeURIComponent(fileName);
+		if (decoded !== fileName) candidates.push(decoded);
+	} catch {
+		// Malformed %-sequence — keep the raw form only.
+	}
+
 	// Try to resolve the file using Obsidian's link resolution
-	const resolved = vault.getFiles().find((f) => {
-		return f.path === fileName || f.name === fileName || f.path.endsWith("/" + fileName);
-	});
+	const resolved = vault.getFiles().find((f) =>
+		candidates.some((c) => f.path === c || f.name === c || f.path.endsWith("/" + c))
+	);
 
 	if (!resolved) return null;
 

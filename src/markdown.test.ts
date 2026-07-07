@@ -232,6 +232,28 @@ describe("image processing", () => {
 		expect(result).toBe("![](https://share.jotbird.com/images/def.jpg)");
 	});
 
+	it("uploads standard-markdown images whose path is percent-encoded (spaces -> %20)", async () => {
+		// Obsidian encodes spaces as %20 in standard-markdown links, but the vault file
+		// on disk keeps literal spaces (its default "Pasted image ….png" naming). The path
+		// must be URL-decoded before matching against the vault, or the image silently
+		// fails to resolve and ships as a broken local reference. The file IS present here,
+		// so a failure isolates the encoding mismatch (not a missing file).
+		const imageFile = new TFile();
+		imageFile.path = "assets/Pasted image 20260706.png";
+		imageFile.name = "Pasted image 20260706.png";
+		imageFile.basename = "Pasted image 20260706";
+		imageFile.extension = "png";
+
+		const vault = makeVault([imageFile]);
+		vault.readBinary = vi.fn().mockResolvedValue(new ArrayBuffer(8));
+		mockUploadImage.mockResolvedValue({ url: "https://share.jotbird.com/images/enc.png" });
+
+		const input = "![](assets/Pasted%20image%2020260706.png)";
+		const result = await processMarkdown(input, vault, "key", false);
+		expect(mockUploadImage).toHaveBeenCalledWith("key", expect.any(ArrayBuffer), "Pasted image 20260706.png", "image/png");
+		expect(result).toBe("![](https://share.jotbird.com/images/enc.png)");
+	});
+
 	it("uploads standard markdown local images and rewrites paths", async () => {
 		const imageFile = new TFile();
 		imageFile.path = "images/chart.png";
