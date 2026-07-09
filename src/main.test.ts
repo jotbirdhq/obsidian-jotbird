@@ -1810,9 +1810,57 @@ describe("obsidian protocol handler", () => {
 		await plugin.onload();
 
 		const handler = getProtocolHandler(plugin)!;
-		await handler({ action: "jotbird", token: "jb_abc123def456" });
+		// Simulate the user clicking "Connect account", which mints the CSRF nonce that
+		// the callback's `state` must match.
+		const state = plugin.beginAccountConnect();
+		await handler({ action: "jotbird", token: "jb_abc123def456", state });
 
 		expect(plugin.settings.apiKey).toBe("jb_abc123def456");
+	});
+
+	it("rejects a valid token whose state does not match the pending nonce (CSRF)", async () => {
+		const plugin = createPlugin({
+			settings: { apiKey: "", stripTags: true, autoCopyLink: true },
+			publishedNotes: {},
+		});
+		await plugin.onload();
+
+		const handler = getProtocolHandler(plugin)!;
+		plugin.beginAccountConnect(); // a connect is pending, but the attacker guesses state
+		await handler({ action: "jotbird", token: "jb_attacker_key", state: "wrong-nonce" });
+
+		expect(plugin.settings.apiKey).toBe("");
+	});
+
+	it("rejects a valid token when no connect was initiated (no nonce)", async () => {
+		const plugin = createPlugin({
+			settings: { apiKey: "", stripTags: true, autoCopyLink: true },
+			publishedNotes: {},
+		});
+		await plugin.onload();
+
+		const handler = getProtocolHandler(plugin)!;
+		// No beginAccountConnect() → a drive-by obsidian://jotbird?token=… must be ignored.
+		await handler({ action: "jotbird", token: "jb_attacker_key", state: "anything" });
+
+		expect(plugin.settings.apiKey).toBe("");
+	});
+
+	it("consumes the nonce (single-use): replaying the same state is rejected", async () => {
+		const plugin = createPlugin({
+			settings: { apiKey: "", stripTags: true, autoCopyLink: true },
+			publishedNotes: {},
+		});
+		await plugin.onload();
+
+		const handler = getProtocolHandler(plugin)!;
+		const state = plugin.beginAccountConnect();
+		await handler({ action: "jotbird", token: "jb_first", state });
+		expect(plugin.settings.apiKey).toBe("jb_first");
+
+		// A second callback replaying the same state must not swap the key again.
+		await handler({ action: "jotbird", token: "jb_replayed", state });
+		expect(plugin.settings.apiKey).toBe("jb_first");
 	});
 
 	it("rejects token that does not start with jb_", async () => {
@@ -1902,7 +1950,8 @@ describe("obsidian protocol handler", () => {
 			});
 
 		const handler = getProtocolHandler(plugin)!;
-		await handler({ action: "jotbird", token: "jb_newkey123" });
+		const state = plugin.beginAccountConnect();
+		await handler({ action: "jotbird", token: "jb_newkey123", state });
 
 		// Wait for async claim reconciliation to complete
 		await vi.waitFor(() => {
@@ -1939,7 +1988,8 @@ describe("obsidian protocol handler", () => {
 		await plugin.onload();
 
 		const handler = getProtocolHandler(plugin)!;
-		await handler({ action: "jotbird", token: "jb_key123" });
+		const state = plugin.beginAccountConnect();
+		await handler({ action: "jotbird", token: "jb_key123", state });
 
 		// claimDocument should not be called for docs without editToken
 		expect(mockClaimDocument).not.toHaveBeenCalled();
@@ -1976,7 +2026,8 @@ describe("obsidian protocol handler", () => {
 			});
 
 		const handler = getProtocolHandler(plugin)!;
-		await handler({ action: "jotbird", token: "jb_key123" });
+		const state = plugin.beginAccountConnect();
+		await handler({ action: "jotbird", token: "jb_key123", state });
 
 		await vi.waitFor(() => {
 			expect(mockClaimDocument).toHaveBeenCalledTimes(2);

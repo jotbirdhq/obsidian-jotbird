@@ -17,7 +17,9 @@ export class JotBirdSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		const connectUrl = `${SITE_URL}/account/api-key?obsidian=1`;
+		// Nonce is minted per click below (beginAccountConnect) and appended as `state`.
+		const buildConnectUrl = () =>
+			`${SITE_URL}/account/api-key?obsidian=1&state=${encodeURIComponent(this.plugin.beginAccountConnect())}`;
 
 		if (this.plugin.settings.apiKey) {
 			const accountDesc = this.plugin.isPro
@@ -91,7 +93,7 @@ export class JotBirdSettingTab extends PluginSettingTab {
 						.setButtonText("Connect account")
 						.setCta()
 						.onClick(() => {
-							window.open(connectUrl);
+							window.open(buildConnectUrl());
 						})
 				);
 		}

@@ -25,6 +25,11 @@ export default class JotBirdPlugin extends Plugin {
 	isPro = false;
 	private settingTab: JotBirdSettingTab | null = null;
 	proRefreshDone = false;
+	// CSRF nonce for the browser sign-in flow: minted when the user clicks "Connect
+	// account", verified against the `state` on the obsidian://jotbird?token=… callback,
+	// then discarded. In-memory only (a restart mid-flow just means retrying). See the
+	// protocol handler in onload().
+	private pendingAuthNonce: string | null = null;
 	private proCheckInFlight: Promise<void> | null = null;
 	private propertyIconTimer: number | null = null;
 	// File paths with a publish currently in flight, to block re-entrant calls.
@@ -192,6 +197,19 @@ export default class JotBirdPlugin extends Plugin {
 			const p = params as Record<string, string>;
 
 			if (p.token && p.token.startsWith("jb_")) {
+				// CSRF guard: only accept a token whose `state` matches the nonce we minted
+				// when the user clicked "Connect account". Without this, any web page could
+				// navigate to obsidian://jotbird?token=jb_<attacker-key> and silently swap in
+				// its own account, then auto-claim (and irreversibly transfer ownership of)
+				// the user's anonymous documents. Mirrors the VS Code extension's nonce.
+				const expected = this.pendingAuthNonce;
+				this.pendingAuthNonce = null; // single-use, regardless of outcome
+				if (!expected || p.state !== expected) {
+					new Notice(
+						"Sign-in couldn't be verified. Please try connecting your account again."
+					);
+					return;
+				}
 				this.settings.apiKey = p.token;
 				await this.saveSettings();
 				new Notice("Account connected successfully!");
@@ -205,6 +223,17 @@ export default class JotBirdPlugin extends Plugin {
 				new Notice("Invalid token received. Please try again.");
 			}
 		});
+	}
+
+	/**
+	 * Start the browser sign-in flow: mint a single-use CSRF nonce, remember it, and
+	 * return it so the caller can pass it as `state` in the connect URL. The
+	 * obsidian://jotbird?token=… callback is only honored when its `state` matches this
+	 * nonce (see the protocol handler in onload()).
+	 */
+	beginAccountConnect(): string {
+		this.pendingAuthNonce = crypto.randomUUID();
+		return this.pendingAuthNonce;
 	}
 
 	private getActiveMarkdownFile(): TFile | null {
