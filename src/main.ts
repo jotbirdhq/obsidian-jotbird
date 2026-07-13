@@ -4,6 +4,7 @@ import {
 	DEFAULT_SETTINGS,
 	PublishedNote,
 	PluginData,
+	PublishWarning,
 } from "./types";
 import {
 	publishNote,
@@ -12,11 +13,24 @@ import {
 	deleteDocument,
 	trialDeleteDocument,
 	claimDocument,
+	getPageSettings,
 	setClientVersion,
 } from "./api";
 import { processMarkdown, applyTitleMode } from "./markdown";
+import {
+	resolvePagePublishSettings,
+	reconcileNoteProperty,
+	FM_THEME,
+	FM_HIDE_BRANDING,
+	type SettingProperty,
+} from "./pageSettings";
 import { JotBirdSettingTab } from "./settings";
-import { ConfirmModal, DocumentListModal } from "./modals";
+import { ConfirmModal, DocumentListModal, PageSettingsModal } from "./modals";
+
+/** How long a Pro-status check stays fresh. Long enough that opening the
+ * settings tab or the page-settings modal repeatedly doesn't spam the API,
+ * short enough that a subscription change is picked up within a session. */
+const PRO_CHECK_TTL_MS = 5 * 60 * 1000;
 
 export default class JotBirdPlugin extends Plugin {
 	settings: JotBirdSettings = DEFAULT_SETTINGS;
@@ -31,9 +45,17 @@ export default class JotBirdPlugin extends Plugin {
 	// protocol handler in onload().
 	private pendingAuthNonce: string | null = null;
 	private proCheckInFlight: Promise<void> | null = null;
+	// Epoch ms of the last successful Pro check; drives refreshProStatusIfStale.
+	private lastProCheckAt = 0;
 	private propertyIconTimer: number | null = null;
 	// File paths with a publish currently in flight, to block re-entrant calls.
 	private publishing = new Set<string>();
+	// "<path> <setting>:<reason>" of publish warnings already shown this session,
+	// so a standing condition (a vault default the account can't use) doesn't
+	// re-toast on every publish of that note — while a warning about a DIFFERENT
+	// note is still reported. Scoped per note deliberately; see
+	// noticePublishWarnings. In-memory: a restart shows each again once.
+	private seenPublishWarnings = new Set<string>();
 
 	// async onload() is the standard Obsidian pattern — the plugin loader awaits it.
 	// The pinned 1.4.x typings type onload() as void-returning, which trips
@@ -54,6 +76,10 @@ export default class JotBirdPlugin extends Plugin {
 			| undefined;
 		mtm?.setType("jotbird_link", "text");
 		mtm?.setType("jotbird_expires", "text");
+		// Settings overrides (user-authored, read-only for the plugin — see
+		// pageSettings.ts). Registered so Obsidian renders them natively.
+		mtm?.setType(FM_THEME, "text"); // no native enum property type
+		mtm?.setType(FM_HIDE_BRANDING, "checkbox");
 
 		// Register custom icon (scaled to fit 0 0 100 100 viewBox)
 		addIcon(
@@ -109,6 +135,35 @@ export default class JotBirdPlugin extends Plugin {
 			},
 		});
 
+		// Command: Page settings (theme / branding / visibility of the live page).
+		// Only available on a published, account-owned note — there are no page
+		// settings until there's a page, and the settings API is API-key-only
+		// (anonymous docs, which still carry an editToken, have no settings).
+		this.addCommand({
+			id: "page-settings",
+			name: "Page settings",
+			checkCallback: (checking) => {
+				const file = this.getActiveMarkdownFile();
+				if (!file || !this.canManagePageSettings(file)) return false;
+				if (!checking) this.openPageSettings(file);
+				return true;
+			},
+		});
+
+		// Command: Pull page settings into frontmatter — the explicit,
+		// user-initiated escape hatch for settings-as-code users. The plugin
+		// never writes settings properties on its own (see pageSettings.ts).
+		this.addCommand({
+			id: "pull-page-settings",
+			name: "Pull page settings into properties",
+			checkCallback: (checking) => {
+				const file = this.getActiveMarkdownFile();
+				if (!file || !this.canManagePageSettings(file)) return false;
+				if (!checking) void this.pullPageSettings(file);
+				return true;
+			},
+		});
+
 		// Command: List published documents
 		this.addCommand({
 			id: "list-published-documents",
@@ -139,6 +194,13 @@ export default class JotBirdPlugin extends Plugin {
 								new Notice("Link copied to clipboard");
 							});
 					});
+					if (this.canManagePageSettings(file)) {
+						menu.addItem((item) => {
+							item.setTitle("Page settings")
+								.setIcon("settings")
+								.onClick(() => this.openPageSettings(file));
+						});
+					}
 					menu.addItem((item) => {
 						item.setTitle("Unpublish")
 							.setIcon("trash")
@@ -171,6 +233,9 @@ export default class JotBirdPlugin extends Plugin {
 					delete this.publishedNotes[oldPath];
 					void this.saveSettings();
 				}
+				// Dismissed publish warnings are keyed by path; move them with the
+				// note so a rename doesn't resurface a warning already seen.
+				this.remapNoticeKeys(oldPath, file.path);
 			})
 		);
 
@@ -336,6 +401,11 @@ export default class JotBirdPlugin extends Plugin {
 		if (!this.settings.storeFrontmatter) return;
 		try {
 			await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+				// ⚠️ Delete only the plugin-written RECEIPTS (link/expires + legacy
+				// names). NEVER add the user-authored settings properties
+				// (jotbird_theme, jotbird_hide_branding) to this list: unpublish
+				// removes the receipt, not the user's intent — stripping their
+				// per-note configuration here would silently destroy it.
 				delete fm["jotbird_link"];
 				delete fm["jotbird_expires"];
 				// Clean up old property names from previous versions
@@ -346,6 +416,175 @@ export default class JotBirdPlugin extends Plugin {
 		} catch (e) {
 			console.warn("JotBird: Failed to clear frontmatter", e);
 		}
+	}
+
+	/**
+	 * Surface the settings the server dropped, as ONE Notice.
+	 *
+	 * A standing condition (a free/lapsed account with a vault-wide default, or a
+	 * Pro property in a template note) makes the server warn on EVERY publish of
+	 * that note, forever. Emitting one toast per warning on top of the
+	 * "Published!" toast turns that into permanent noise, so warnings are
+	 * collapsed into a single Notice and suppressed on repeat.
+	 *
+	 * ⚠️ The suppression key is scoped to the NOTE. Keying it on
+	 * `setting:reason` alone silently swallows a genuine warning about a
+	 * *different* file — publish note A with a typo'd theme, and note B's typo
+	 * would never be reported — which is the very silent-drop failure this whole
+	 * feature exists to end. Suppress the repeat, never the first word about a
+	 * note.
+	 *
+	 * `pro_lapsed` is never suppressed: it fires once per page by construction
+	 * (the strip removes the value) and is a churn-worthy event.
+	 */
+	private noticePublishWarnings(file: TFile, warnings: PublishWarning[] | undefined): void {
+		if (!warnings || warnings.length === 0) return;
+
+		const lapsed = warnings.filter((w) => w.reason === "pro_lapsed");
+		const rest = warnings.filter((w) => w.reason !== "pro_lapsed");
+
+		// Query, then record. Folding the mutation into the filter predicate makes
+		// suppression a side effect of what reads like a pure query — any later
+		// reorder or double-evaluation would silently change which warnings show.
+		const fresh = rest.filter((w) => !this.hasSeenNotice(file.path, this.warningKey(w)));
+		for (const w of fresh) {
+			this.markNoticeSeen(file.path, this.warningKey(w));
+		}
+
+		const shown = [...lapsed, ...fresh];
+		if (shown.length === 0) return;
+		new Notice(shown.map((w) => w.message).join("\n\n"), 10000);
+	}
+
+	private warningKey(warning: PublishWarning): string {
+		return `${warning.setting}:${warning.reason}`;
+	}
+
+	private scopedNoticeKey(path: string, key: string): string {
+		return `${path} ${key}`;
+	}
+
+	private hasSeenNotice(path: string, key: string): boolean {
+		return this.seenPublishWarnings.has(this.scopedNoticeKey(path, key));
+	}
+
+	private markNoticeSeen(path: string, key: string): void {
+		this.seenPublishWarnings.add(this.scopedNoticeKey(path, key));
+	}
+
+	/**
+	 * Show a note-scoped Notice at most once per session. Used for the anonymous
+	 * "settings need an account" message, which is a standing condition and would
+	 * otherwise toast on every republish of that note.
+	 */
+	private noticeOncePerNote(file: TFile, key: string, message: string): void {
+		if (this.hasSeenNotice(file.path, key)) return;
+		this.markNoticeSeen(file.path, key);
+		new Notice(message, 8000);
+	}
+
+	/**
+	 * Move a note's dismissed-notice keys with it on rename, so a warning the user
+	 * already saw doesn't resurface just because the file moved. (The same handler
+	 * remaps publishedNotes.)
+	 */
+	private remapNoticeKeys(oldPath: string, newPath: string): void {
+		const prefix = `${oldPath} `;
+		for (const scoped of [...this.seenPublishWarnings]) {
+			if (!scoped.startsWith(prefix)) continue;
+			this.seenPublishWarnings.delete(scoped);
+			this.markNoticeSeen(newPath, scoped.slice(prefix.length));
+		}
+	}
+
+	/**
+	 * Page settings exist only for a published, account-owned page: the settings
+	 * API is API-key-authenticated, and a note still carrying an editToken is an
+	 * anonymous document with no settings to manage.
+	 */
+	canManagePageSettings(file: TFile): boolean {
+		const published = this.publishedNotes[file.path];
+		return !!(this.settings.apiKey && published && !published.editToken);
+	}
+
+	openPageSettings(file: TFile): void {
+		const published = this.publishedNotes[file.path];
+		if (!published) return;
+		new PageSettingsModal(this.app, this, file, published).open();
+	}
+
+	/**
+	 * Explicit, user-initiated write of the CURRENT server-side page settings
+	 * into the note's properties — for users who want settings-as-code. This and
+	 * the modal's per-note exception are the ONLY paths that write settings
+	 * properties; the plugin never materializes them implicitly.
+	 */
+	async pullPageSettings(file: TFile): Promise<void> {
+		const published = this.publishedNotes[file.path];
+		if (!published) return;
+		try {
+			const view = await getPageSettings(this.settings.apiKey, {
+				documentId: published.documentId,
+				slug: published.slug,
+			});
+
+			// Make the NOTE agree with the PAGE — a sync, not an append. Every
+			// decision (write the page's value / drop a stale property / write an
+			// explicit clearing value because a vault default would otherwise take
+			// over) belongs to reconcileNoteProperty, which owns the precedence
+			// chain. Do NOT re-derive it here: a hand-rolled version that forgot
+			// vault defaults is exactly how this command came to silently change
+			// the page it was asked to sync.
+			const fm: Record<string, unknown> | undefined =
+				this.app.metadataCache.getFileCache(file)?.frontmatter;
+
+			const fields: Record<string, unknown> = {};
+			const removals: string[] = [];
+
+			const pageValues: Record<SettingProperty, unknown> = {
+				[FM_THEME]: view.theme,
+				[FM_HIDE_BRANDING]: view.hideBranding,
+			};
+
+			for (const key of [FM_THEME, FM_HIDE_BRANDING] as SettingProperty[]) {
+				const decision = reconcileNoteProperty(key, pageValues[key], fm, this.settings);
+				if (decision.action === "write") fields[key] = decision.value;
+				if (decision.action === "remove") removals.push(key);
+			}
+
+			if (Object.keys(fields).length === 0 && removals.length === 0) {
+				new Notice("This note's properties already match the page — nothing to save.");
+				return;
+			}
+
+			await this.writePageSettingsFrontmatter(file, fields, removals);
+			new Notice("Page settings saved to note properties.");
+		} catch (e) {
+			new Notice(`${e instanceof Error ? e.message : "Failed to pull page settings"}`, 10000);
+		}
+	}
+
+	/**
+	 * Direct frontmatter write for the explicit settings-property paths (pull
+	 * command, modal per-note exception). Deliberately IGNORES storeFrontmatter:
+	 * that toggle means "don't write receipts automatically", and these writes
+	 * are the user asking by name. Do not route through writeFrontmatter(),
+	 * which early-returns when the toggle is off and would silently turn those
+	 * buttons into no-ops.
+	 */
+	async writePageSettingsFrontmatter(
+		file: TFile,
+		fields: Record<string, unknown>,
+		removals: string[] = []
+	): Promise<void> {
+		await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+			for (const key of removals) {
+				delete fm[key];
+			}
+			for (const [key, value] of Object.entries(fields)) {
+				fm[key] = value;
+			}
+		});
 	}
 
 	private reconcileFrontmatter(): void {
@@ -460,6 +699,30 @@ export default class JotBirdPlugin extends Plugin {
 				}
 			}
 
+			// Page settings rider: per-note properties (incl. explicit false) >
+			// vault defaults > omitted (server preserves). Read from the metadata
+			// cache, NOT gated on storeFrontmatter — that toggle governs writing.
+			// Values go verbatim; the server warns about anything it drops.
+			const resolvedSettings = resolvePagePublishSettings(
+				this.app.metadataCache.getFileCache(file)?.frontmatter,
+				this.settings
+			);
+			// Anonymous publishes have no settings channel at all (/trial/publish
+			// takes no settings, and an anonymous page has none). Say so locally —
+			// the server can't warn about a field it never receives, and silently
+			// ignoring a property the user typed is the exact failure the publish
+			// warnings exist to prevent. Deduped per note like the server warnings
+			// (same standing-condition spam otherwise: this note would toast on
+			// every single republish).
+			if (!hasApiKey && resolvedSettings) {
+				this.noticeOncePerNote(
+					file,
+					"anonymous",
+					"Page settings need a connected JotBird account — published without them."
+				);
+			}
+			const pageSettings = hasApiKey ? resolvedSettings : undefined;
+
 			let result;
 			let retried = false;
 			try {
@@ -470,7 +733,8 @@ export default class JotBirdPlugin extends Plugin {
 						title,
 						existing?.slug,
 						existing?.documentId,
-						renderTitle
+						renderTitle,
+						pageSettings
 					);
 				} else {
 					result = await trialPublish(
@@ -493,7 +757,8 @@ export default class JotBirdPlugin extends Plugin {
 							title,
 							undefined,
 							undefined,
-							renderTitle
+							renderTitle,
+							pageSettings
 						);
 					} else {
 						result = await trialPublish(
@@ -547,6 +812,11 @@ export default class JotBirdPlugin extends Plugin {
 			} else {
 				new Notice(`${verb}!`, 5000);
 			}
+			// Settings the server could not honor (Pro-gated, invalid value, or a
+			// lapsed subscription dropping a preserved setting). The publish itself
+			// succeeded; the server is the authority on what applied — never rely
+			// on a local isPro pre-check, which can be stale.
+			this.noticePublishWarnings(file, result.warnings);
 			this.addPropertyIcons();
 		} catch (e) {
 			new Notice(`${e instanceof Error ? e.message : "Unknown error"}`, 10000);
@@ -679,28 +949,70 @@ export default class JotBirdPlugin extends Plugin {
 		}
 	}
 
-	async checkProStatus(): Promise<void> {
-		if (!this.settings.apiKey) return;
+	/**
+	 * Refresh `isPro` from the server.
+	 *
+	 * Returns whether the server actually ANSWERED — i.e. whether the API key is
+	 * usable. Callers that only want the Pro flag can ignore it, but the settings
+	 * tab needs it: it must distinguish "this key works" (re-render into the
+	 * connected state) from "this is a half-typed key that 401s" (leave the pane
+	 * alone so the user can keep typing). A `false` here is NOT "not Pro" — it is
+	 * "we don't know", which is why it must never be treated as a Pro answer.
+	 */
+	async checkProStatus(): Promise<boolean> {
+		if (!this.settings.apiKey) return false;
 		// Serialize concurrent calls — wait for any in-flight check to finish,
 		// then make a fresh call so the caller always gets up-to-date data.
 		while (this.proCheckInFlight) {
 			try { await this.proCheckInFlight; } catch { /* ignore */ }
 		}
+		let answered = false;
 		this.proCheckInFlight = (async () => {
 			try {
 				const result = await listDocuments(this.settings.apiKey);
+				answered = true;
+				this.lastProCheckAt = Date.now();
 				const wasPro = this.isPro;
 				this.isPro = !!result.isPro;
 				if (this.isPro && !wasPro) {
 					this.settingTab?.display();
 				}
-			} catch { /* ignore — non-critical */ }
+			} catch { /* ignore — non-critical; `answered` stays false */ }
 		})();
 		try {
 			await this.proCheckInFlight;
 		} finally {
 			this.proCheckInFlight = null;
 		}
+		return answered;
+	}
+
+	/**
+	 * Refresh `isPro` unless it was checked recently.
+	 *
+	 * Every Pro gate in the UI needs a truthful answer: a cache left stale by a
+	 * failed startup check (an offline launch) would lock a paying subscriber out
+	 * of controls the server would happily accept. But the surfaces that need it
+	 * — the settings tab on every render, the page-settings modal on every open —
+	 * would otherwise fire a round trip each time, mostly for accounts that are
+	 * not Pro. One short TTL serves both.
+	 */
+	async refreshProStatusIfStale(): Promise<void> {
+		if (!this.settings.apiKey) return;
+		if (Date.now() - this.lastProCheckAt < PRO_CHECK_TTL_MS) return;
+		await this.checkProStatus();
+	}
+
+	/**
+	 * Drop the cached Pro answer. MUST be called whenever the API key changes —
+	 * the TTL above is keyed on time, not on identity, so without this a fresh
+	 * timestamp from the PREVIOUS account suppresses the check for the new one,
+	 * and a subscriber who just pasted their key sits behind "Requires Pro."
+	 * gates until the window expires.
+	 */
+	invalidateProStatus(): void {
+		this.lastProCheckAt = 0;
+		this.isPro = false;
 	}
 
 	private async handleProUpgrade(): Promise<void> {

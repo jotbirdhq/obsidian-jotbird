@@ -11,5 +11,13 @@ export default defineConfig([
 			parser: tsparser,
 			parserOptions: { project: "./tsconfig.json" },
 		},
+		rules: {
+			// "Pro" is the JotBird subscription tier (a proper noun), not a
+			// mis-capitalized word.
+			"obsidianmd/ui/sentence-case": [
+				"error",
+				{ ignoreWords: ["JotBird", "Pro"] },
+			],
+		},
 	},
 ]);

@@ -8,12 +8,15 @@ export const setIcon = vi.fn();
 export const requestUrl = vi.fn();
 
 // --- Notice mock ---
-export class Notice {
-	message: string;
-	constructor(message: string, _timeout?: number) {
-		this.message = message;
-	}
-}
+// A vi.fn-backed constructor so tests can assert on shown notices via
+// vi.mocked(Notice).mock.calls (cleared by vi.clearAllMocks in beforeEach).
+export const Notice = vi.fn().mockImplementation(function (
+	this: { message: string },
+	message: string,
+	_timeout?: number
+) {
+	this.message = message;
+});
 
 // --- TAbstractFile / TFile / TFolder ---
 export class TAbstractFile {
@@ -76,30 +79,75 @@ export class MetadataCache {
 }
 
 // --- Setting mock ---
+// Settings built during a render are recorded in `renderedSettings` so tests can
+// drive real UI interactions (type a password, click Save) instead of reaching
+// into private methods.
+//
+// ⚠️ A Setting remembers the container it was built into, and a mock element's
+// empty() REMOVES that container's settings from this list — mirroring what
+// containerEl.empty() does to the real DOM at the top of every render(). Without
+// that, a re-render would leave the previous render's components in the list,
+// and a test reading the first match would silently assert against a stale,
+// off-screen control while believing it checked the live one.
+export const renderedSettings: Setting[] = [];
+
+export function resetRenderedSettings(): void {
+	renderedSettings.length = 0;
+}
+
+function dropSettingsFor(containerEl: unknown): void {
+	for (let i = renderedSettings.length - 1; i >= 0; i--) {
+		if (renderedSettings[i].containerEl === containerEl) {
+			renderedSettings.splice(i, 1);
+		}
+	}
+}
+
 export class Setting {
 	settingEl = createMockEl();
 	controlEl = createMockEl();
-	constructor(_containerEl: unknown) {}
-	setName(_name: string) {
+	containerEl: unknown;
+	name = "";
+	texts: TextComponent[] = [];
+	toggles: ToggleComponent[] = [];
+	buttons: ButtonComponent[] = [];
+	dropdowns: DropdownComponent[] = [];
+	constructor(containerEl: unknown) {
+		this.containerEl = containerEl;
+		renderedSettings.push(this);
+	}
+	setName(name: string) {
+		this.name = name;
 		return this;
 	}
 	setDesc(_desc: string) {
 		return this;
 	}
+	setHeading() {
+		return this;
+	}
 	addText(cb: (text: TextComponent) => void) {
-		cb(new TextComponent());
+		const text = new TextComponent();
+		this.texts.push(text);
+		cb(text);
 		return this;
 	}
 	addToggle(cb: (toggle: ToggleComponent) => void) {
-		cb(new ToggleComponent());
+		const toggle = new ToggleComponent();
+		this.toggles.push(toggle);
+		cb(toggle);
 		return this;
 	}
 	addButton(cb: (btn: ButtonComponent) => void) {
-		cb(new ButtonComponent());
+		const btn = new ButtonComponent();
+		this.buttons.push(btn);
+		cb(btn);
 		return this;
 	}
 	addDropdown(cb: (dd: DropdownComponent) => void) {
-		cb(new DropdownComponent());
+		const dd = new DropdownComponent();
+		this.dropdowns.push(dd);
+		cb(dd);
 		return this;
 	}
 	then(cb: (setting: Setting) => void) {
@@ -109,43 +157,93 @@ export class Setting {
 }
 
 class TextComponent {
+	inputEl = { type: "text", addClass: vi.fn() };
+	value = "";
+	disabled = false;
+	private changeCb: ((value: string) => void) | null = null;
 	setPlaceholder(_p: string) {
 		return this;
 	}
-	setValue(_v: string) {
+	setValue(v: string) {
+		this.value = v;
 		return this;
 	}
-	onChange(_cb: (value: string) => void) {
+	onChange(cb: (value: string) => void) {
+		this.changeCb = cb;
 		return this;
+	}
+	setDisabled(d: boolean) {
+		this.disabled = d;
+		return this;
+	}
+	/** Test helper: simulate the user typing. */
+	type(v: string) {
+		this.value = v;
+		this.changeCb?.(v);
 	}
 }
 
 class ToggleComponent {
-	setValue(_v: boolean) {
+	value = false;
+	disabled = false;
+	private changeCb: ((value: boolean) => void) | null = null;
+	setValue(v: boolean) {
+		this.value = v;
 		return this;
 	}
-	onChange(_cb: (value: boolean) => void) {
+	onChange(cb: (value: boolean) => void) {
+		this.changeCb = cb;
 		return this;
+	}
+	setDisabled(d: boolean) {
+		this.disabled = d;
+		return this;
+	}
+	/** Test helper: simulate the user flipping the toggle. */
+	toggle(v: boolean) {
+		this.value = v;
+		this.changeCb?.(v);
 	}
 }
 
 class DropdownComponent {
-	addOption(_value: string, _display: string) {
+	value = "";
+	disabled = false;
+	options: string[] = [];
+	private changeCb: ((value: string) => void) | null = null;
+	addOption(value: string, _display: string) {
+		this.options.push(value);
 		return this;
 	}
-	addOptions(_options: Record<string, string>) {
+	addOptions(options: Record<string, string>) {
+		this.options.push(...Object.keys(options));
 		return this;
 	}
-	setValue(_v: string) {
+	setValue(v: string) {
+		this.value = v;
 		return this;
 	}
-	onChange(_cb: (value: string) => void) {
+	onChange(cb: (value: string) => void) {
+		this.changeCb = cb;
 		return this;
+	}
+	setDisabled(d: boolean) {
+		this.disabled = d;
+		return this;
+	}
+	/** Test helper: simulate the user picking an option. */
+	select(v: string) {
+		this.value = v;
+		this.changeCb?.(v);
 	}
 }
 
 class ButtonComponent {
-	setButtonText(_t: string) {
+	text = "";
+	disabled = false;
+	private clickCb: (() => void) | null = null;
+	setButtonText(t: string) {
+		this.text = t;
 		return this;
 	}
 	setCta() {
@@ -154,8 +252,17 @@ class ButtonComponent {
 	setWarning() {
 		return this;
 	}
-	onClick(_cb: () => void) {
+	onClick(cb: () => void) {
+		this.clickCb = cb;
 		return this;
+	}
+	setDisabled(d: boolean) {
+		this.disabled = d;
+		return this;
+	}
+	/** Test helper: simulate the user clicking. */
+	click() {
+		this.clickCb?.();
 	}
 }
 
@@ -250,7 +357,10 @@ function createMockEl(): MockElement {
 		style: {},
 		createEl: vi.fn((_tag: string, _opts?: unknown) => createMockEl()),
 		addClass: vi.fn(),
-		empty: vi.fn(),
+		// Clearing a container discards the Settings built into it, exactly as the
+		// real containerEl.empty() does at the top of a render(). Keeps
+		// `renderedSettings` reflecting what is actually on screen.
+		empty: vi.fn(() => dropSettingsFor(el)),
 		setText: vi.fn(),
 		setAttr: vi.fn(),
 		querySelector: vi.fn().mockReturnValue(null),

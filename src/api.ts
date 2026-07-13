@@ -5,6 +5,9 @@ import {
 	DeleteResponse,
 	ClaimResponse,
 	ImageUploadResponse,
+	PagePublishSettings,
+	PageSettingsView,
+	PageSettingsPatch,
 } from "./types";
 
 const BASE_URL = "https://api.jotbird.com";
@@ -33,7 +36,7 @@ function headers(apiKey: string): Record<string, string> {
 	return h;
 }
 
-async function apiRequest(params: RequestUrlParam): Promise<{ status: number; json: unknown }> {
+async function apiRequest(params: RequestUrlParam): Promise<{ status: number; json: unknown; headers: Record<string, string> }> {
 	const response = await requestUrl({ ...params, throw: false });
 	let json: unknown;
 	try {
@@ -42,7 +45,7 @@ async function apiRequest(params: RequestUrlParam): Promise<{ status: number; js
 		// Response body is not valid JSON (e.g. plain-text "Not found")
 		json = { error: response.text || `Request failed with status ${response.status}` };
 	}
-	return { status: response.status, json };
+	return { status: response.status, json, headers: response.headers ?? {} };
 }
 
 function assertOk(status: number, json: unknown, context: string): void {
@@ -61,9 +64,10 @@ export async function publishNote(
 	title: string,
 	slug?: string,
 	documentId?: string,
-	renderTitle?: boolean
+	renderTitle?: boolean,
+	settings?: PagePublishSettings
 ): Promise<PublishResponse> {
-	const body: Record<string, string | boolean> = { markdown, title };
+	const body: Record<string, unknown> = { markdown, title };
 	// documentId is the authoritative identifier for updates; the server resolves
 	// the document's current slug/namespace from it. slug is still sent for the
 	// first publish and as a fallback for notes published before documentId existed.
@@ -76,6 +80,12 @@ export async function publishNote(
 	// Opt-in dedicated page-title header (non-Automatic title modes).
 	if (renderTitle) {
 		body.renderTitle = true;
+	}
+	// Page settings rider (theme/hideBranding). Omitted entirely when the note
+	// and vault defaults specify nothing, so the server preserves the page's
+	// existing settings. Anything it can't honor comes back in `warnings`.
+	if (settings && Object.keys(settings).length > 0) {
+		body.settings = settings;
 	}
 
 	const { status, json } = await apiRequest({
@@ -135,6 +145,93 @@ export async function claimDocument(
 
 	assertOk(status, json, "Claim");
 	return json as ClaimResponse;
+}
+
+/**
+ * Identify a document for the settings API.
+ *
+ * A `documentId` is authoritative and resolves flat and namespaced documents
+ * alike. A bare `slug` is resolved FLAT-ONLY by the server, so a note with no
+ * stored documentId (published before that field existed, or restored by the
+ * frontmatter reconciler) that now lives under an @username namespace needs
+ * `namespaced: true` or it 404s.
+ */
+export interface SettingsTarget {
+	documentId?: string;
+	slug: string;
+	namespaced?: boolean;
+}
+
+function settingsUrl(target: SettingsTarget): string {
+	const query = target.documentId
+		? `documentId=${encodeURIComponent(target.documentId)}`
+		: `slug=${encodeURIComponent(target.slug)}${target.namespaced ? "&namespaced=true" : ""}`;
+	return `${BASE_URL}/cli/settings?${query}`;
+}
+
+/**
+ * GET is NOT rate-limited, so it is the right place to discover whether a
+ * slug-only note is namespaced: on a 404 we simply ask again under the
+ * namespace. The resolved answer comes back in the view (`username`), and
+ * callers pass it to updatePageSettings so the PATCH — which IS rate-limited,
+ * and charged even when it 404s — always goes straight to the right URL. Never
+ * probe on the metered endpoint: a blind retry there would burn two of a free
+ * account's ten hourly writes on a single failed save.
+ */
+export async function getPageSettings(
+	apiKey: string,
+	target: SettingsTarget
+): Promise<PageSettingsView> {
+	let { status, json } = await apiRequest({
+		url: settingsUrl(target),
+		method: "GET",
+		headers: headers(apiKey),
+	});
+
+	if (status === 404 && !target.documentId && !target.namespaced) {
+		({ status, json } = await apiRequest({
+			url: settingsUrl({ ...target, namespaced: true }),
+			method: "GET",
+			headers: headers(apiKey),
+		}));
+	}
+
+	assertOk(status, json, "Page settings");
+	return json as PageSettingsView;
+}
+
+/**
+ * Exactly one request, always. Pass `namespaced` (from a prior GET's `username`
+ * — see settingsTargetFor) when the note has no documentId; there is no retry
+ * here by design, because every attempt is charged to the settings bucket.
+ */
+export async function updatePageSettings(
+	apiKey: string,
+	target: SettingsTarget,
+	patch: PageSettingsPatch
+): Promise<PageSettingsView> {
+	const { status, json, headers: responseHeaders } = await apiRequest({
+		url: settingsUrl(target),
+		method: "PATCH",
+		contentType: "application/json",
+		body: JSON.stringify(patch),
+		headers: headers(apiKey),
+	});
+
+	// The PATCH spends from an hourly settings rate bucket (10/hour on the free
+	// tier), so render a 429 as what it is instead of a generic failure.
+	if (status === 429) {
+		const retryAfter = parseInt(responseHeaders["retry-after"] ?? responseHeaders["Retry-After"] ?? "", 10);
+		const minutes = Number.isFinite(retryAfter) ? Math.max(1, Math.ceil(retryAfter / 60)) : null;
+		throw new Error(
+			minutes
+				? `Settings rate limit reached — try again in about ${minutes} minute${minutes === 1 ? "" : "s"}.`
+				: "Settings rate limit reached — try again later."
+		);
+	}
+
+	assertOk(status, json, "Page settings");
+	return json as PageSettingsView;
 }
 
 export async function trialPublish(

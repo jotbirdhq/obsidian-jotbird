@@ -10,5 +10,7 @@ export default defineConfig({
 	test: {
 		globals: true,
 		include: ["src/**/*.test.ts"],
+		// Provides `window` (the plugin must use window.* timers — see the file).
+		setupFiles: ["src/__mocks__/testSetup.ts"],
 	},
 });

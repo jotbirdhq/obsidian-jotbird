@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { requestUrl } from "obsidian";
-import { publishNote, listDocuments, deleteDocument, uploadImage, trialPublish, trialDeleteDocument, getPortalUrl, setClientVersion } from "./api";
+import { publishNote, listDocuments, deleteDocument, uploadImage, trialPublish, trialDeleteDocument, getPortalUrl, getPageSettings, updatePageSettings, setClientVersion } from "./api";
 
 const mockRequestUrl = vi.mocked(requestUrl);
 
@@ -603,5 +603,273 @@ describe("setClientVersion", () => {
 
 		const call = mockRequestUrl.mock.calls[0][0];
 		expect(call.headers?.["User-Agent"]).toBe("jotbird-obsidian/9.8.7");
+	});
+});
+
+// ---- page settings API ----
+
+describe("publishNote settings rider", () => {
+	it("includes settings in the body when provided", async () => {
+		mockRequestUrl.mockResolvedValue({
+			status: 200,
+			json: { slug: "s", url: "u", title: "t", expiresAt: null, ttlDays: null, created: false },
+			headers: {},
+			text: "",
+			arrayBuffer: new ArrayBuffer(0),
+		} as never);
+
+		await publishNote("jb_key", "# Md", "T", "s", undefined, false, {
+			theme: "essay",
+			hideBranding: false,
+		});
+
+		const body = JSON.parse(mockRequestUrl.mock.calls[0][0].body as string);
+		expect(body.settings).toEqual({ theme: "essay", hideBranding: false });
+	});
+
+	it("omits settings entirely when none resolved (server preserves)", async () => {
+		mockRequestUrl.mockResolvedValue({
+			status: 200,
+			json: { slug: "s", url: "u", title: "t", expiresAt: null, ttlDays: null, created: false },
+			headers: {},
+			text: "",
+			arrayBuffer: new ArrayBuffer(0),
+		} as never);
+
+		await publishNote("jb_key", "# Md", "T", "s", undefined, false, undefined);
+
+		const body = JSON.parse(mockRequestUrl.mock.calls[0][0].body as string);
+		expect(body.settings).toBeUndefined();
+	});
+
+	it("surfaces warnings from the publish response", async () => {
+		mockRequestUrl.mockResolvedValue({
+			status: 200,
+			json: {
+				slug: "s",
+				url: "u",
+				title: "t",
+				expiresAt: null,
+				ttlDays: null,
+				created: false,
+				warnings: [{ setting: "theme", reason: "pro_required", message: "Nope." }],
+			},
+			headers: {},
+			text: "",
+			arrayBuffer: new ArrayBuffer(0),
+		} as never);
+
+		const result = await publishNote("jb_key", "# Md", "T");
+		expect(result.warnings).toEqual([
+			{ setting: "theme", reason: "pro_required", message: "Nope." },
+		]);
+	});
+});
+
+const SETTINGS_VIEW = {
+	slug: "my-doc",
+	username: null,
+	url: "https://share.jotbird.com/my-doc",
+	title: "My Doc",
+	theme: "essay",
+	hideBranding: true,
+	visibility: "unlisted",
+	tags: [],
+	expiresAt: null,
+};
+
+describe("getPageSettings", () => {
+	it("addresses by documentId when the plugin has one", async () => {
+		mockRequestUrl.mockResolvedValue({
+			status: 200,
+			json: SETTINGS_VIEW,
+			headers: {},
+			text: "",
+			arrayBuffer: new ArrayBuffer(0),
+		} as never);
+
+		const view = await getPageSettings("jb_key", { documentId: "doc-uuid-1", slug: "my-doc" });
+
+		const call = mockRequestUrl.mock.calls[0][0];
+		expect(call).toMatchObject({
+			url: "https://api.jotbird.com/cli/settings?documentId=doc-uuid-1",
+			method: "GET",
+		});
+		expect(call.headers).toMatchObject({ Authorization: "Bearer jb_key" });
+		expect(view.theme).toBe("essay");
+	});
+
+	it("falls back to slug for notes published before documentId existed", async () => {
+		mockRequestUrl.mockResolvedValue({
+			status: 200,
+			json: SETTINGS_VIEW,
+			headers: {},
+			text: "",
+			arrayBuffer: new ArrayBuffer(0),
+		} as never);
+
+		await getPageSettings("jb_key", { slug: "my-doc" });
+
+		expect(mockRequestUrl.mock.calls[0][0].url).toBe(
+			"https://api.jotbird.com/cli/settings?slug=my-doc"
+		);
+	});
+
+	it("throws the server's error message on failure", async () => {
+		mockRequestUrl.mockResolvedValue({
+			status: 404,
+			json: { error: "Document not found" },
+			headers: {},
+			text: "",
+			arrayBuffer: new ArrayBuffer(0),
+		} as never);
+
+		await expect(getPageSettings("jb_key", { slug: "gone" })).rejects.toThrow(
+			"Page settings: Document not found"
+		);
+	});
+});
+
+describe("updatePageSettings", () => {
+	it("PATCHes only the changed fields", async () => {
+		mockRequestUrl.mockResolvedValue({
+			status: 200,
+			json: { ...SETTINGS_VIEW, theme: "minimal" },
+			headers: {},
+			text: "",
+			arrayBuffer: new ArrayBuffer(0),
+		} as never);
+
+		const view = await updatePageSettings(
+			"jb_key",
+			{ documentId: "doc-uuid-1", slug: "my-doc" },
+			{ theme: "minimal" }
+		);
+
+		const call = mockRequestUrl.mock.calls[0][0];
+		expect(call).toMatchObject({
+			url: "https://api.jotbird.com/cli/settings?documentId=doc-uuid-1",
+			method: "PATCH",
+			contentType: "application/json",
+		});
+		expect(JSON.parse(call.body as string)).toEqual({ theme: "minimal" });
+		expect(view.theme).toBe("minimal");
+	});
+
+	it("renders a 429 as a settings rate limit with minutes from Retry-After", async () => {
+		mockRequestUrl.mockResolvedValue({
+			status: 429,
+			json: { error: "Rate limit exceeded. Try again in 1740 seconds." },
+			headers: { "retry-after": "1740" },
+			text: "",
+			arrayBuffer: new ArrayBuffer(0),
+		} as never);
+
+		await expect(
+			updatePageSettings("jb_key", { slug: "my-doc" }, { hideBranding: true })
+		).rejects.toThrow("Settings rate limit reached — try again in about 29 minutes.");
+	});
+
+	it("names the offending setting on a Pro-gated 403", async () => {
+		mockRequestUrl.mockResolvedValue({
+			status: 403,
+			json: { error: "Themes require a Pro subscription", setting: "theme" },
+			headers: {},
+			text: "",
+			arrayBuffer: new ArrayBuffer(0),
+		} as never);
+
+		await expect(
+			updatePageSettings("jb_key", { slug: "my-doc" }, { theme: "essay" })
+		).rejects.toThrow("Page settings: Themes require a Pro subscription");
+	});
+});
+
+describe("settings API namespaced fallback", () => {
+	it("retries a slug-only 404 under the account's namespace", async () => {
+		// A bare slug is resolved FLAT-ONLY by the server, so a note with no stored
+		// documentId that now lives under an @username namespace would 404.
+		mockRequestUrl
+			.mockResolvedValueOnce({
+				status: 404,
+				json: { error: "Document not found" },
+				headers: {},
+				text: "",
+				arrayBuffer: new ArrayBuffer(0),
+			} as never)
+			.mockResolvedValueOnce({
+				status: 200,
+				json: { ...SETTINGS_VIEW, username: "tester" },
+				headers: {},
+				text: "",
+				arrayBuffer: new ArrayBuffer(0),
+			} as never);
+
+		const view = await getPageSettings("jb_key", { slug: "my-doc" });
+
+		expect(mockRequestUrl).toHaveBeenCalledTimes(2);
+		expect(mockRequestUrl.mock.calls[0][0].url).toBe(
+			"https://api.jotbird.com/cli/settings?slug=my-doc"
+		);
+		expect(mockRequestUrl.mock.calls[1][0].url).toBe(
+			"https://api.jotbird.com/cli/settings?slug=my-doc&namespaced=true"
+		);
+		expect(view.username).toBe("tester");
+	});
+
+	it("does not retry when a documentId was used (it already resolves both kinds)", async () => {
+		mockRequestUrl.mockResolvedValue({
+			status: 404,
+			json: { error: "Document not found" },
+			headers: {},
+			text: "",
+			arrayBuffer: new ArrayBuffer(0),
+		} as never);
+
+		await expect(
+			getPageSettings("jb_key", { documentId: "doc-1", slug: "my-doc" })
+		).rejects.toThrow("Document not found");
+		expect(mockRequestUrl).toHaveBeenCalledTimes(1);
+	});
+
+	it("never retries the metered PATCH \u2014 it takes the namespace from the caller", async () => {
+		// Every PATCH is charged to the settings bucket (10/hr on the free tier),
+		// even a 404. Probing here would burn two writes on one failed save, so the
+		// caller passes the namespace the free GET already resolved.
+		mockRequestUrl.mockResolvedValue({
+			status: 404,
+			json: { error: "Document not found" },
+			headers: {},
+			text: "",
+			arrayBuffer: new ArrayBuffer(0),
+		} as never);
+
+		await expect(
+			updatePageSettings("jb_key", { slug: "my-doc" }, { theme: "minimal" })
+		).rejects.toThrow("Document not found");
+
+		expect(mockRequestUrl).toHaveBeenCalledTimes(1);
+	});
+
+	it("addresses a namespaced page directly when told it is namespaced", async () => {
+		mockRequestUrl.mockResolvedValue({
+			status: 200,
+			json: { ...SETTINGS_VIEW, username: "tester", theme: "minimal" },
+			headers: {},
+			text: "",
+			arrayBuffer: new ArrayBuffer(0),
+		} as never);
+
+		const view = await updatePageSettings(
+			"jb_key",
+			{ slug: "my-doc", namespaced: true },
+			{ theme: "minimal" }
+		);
+
+		expect(mockRequestUrl).toHaveBeenCalledTimes(1);
+		expect(mockRequestUrl.mock.calls[0][0].url).toBe(
+			"https://api.jotbird.com/cli/settings?slug=my-doc&namespaced=true"
+		);
+		expect(view.theme).toBe("minimal");
 	});
 });
